@@ -43,7 +43,7 @@ const commands = [
 ];
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });
 
 const app = express();
@@ -73,6 +73,10 @@ app.use(
   }),
 );
 app.use(express.static(path.join(process.cwd(), "public")));
+app.use(
+  "/auth-popup",
+  express.static(path.resolve(process.cwd(), "..", "Dashboard", "login popup")),
+);
 
 app.use((request, response, next) => {
   response.locals.sessionUser = request.session.user || null;

@@ -29,31 +29,32 @@ Each managed server can configure:
 ## Setup
 
 1. Create a Discord application and bot in the [Discord Developer Portal](https://discord.com/developers/applications).
-2. Make sure the Dashboard auth backend is running and its Discord provider is configured.
-3. In the Dashboard backend, the Blueprint origin must be allowed for OAuth app redirects.
+2. In the bot settings, enable the `Server Members Intent`.
+3. Make sure the Dashboard auth backend is running and its Discord provider is configured.
+4. In the Dashboard backend, the Blueprint origin must be allowed for OAuth app redirects.
    For local development on `localhost`, the Dashboard popup already treats local origins as trusted.
-4. Copy these values:
+5. Copy these values:
    - bot token
    - application client ID
    - a test server ID if you want command registration to be immediate
    - the Blueprint session secret
    - the Dashboard auth API base URL
    - the login popup URL exposed by the Dashboard auth system
-5. Copy `.env.example` to `.env`.
-6. Fill in the environment variables.
-7. Install dependencies:
+6. Copy `.env.example` to `.env`.
+7. Fill in the environment variables.
+8. Install dependencies:
 
 ```bash
 npm install
 ```
 
-8. Start the app:
+9. Start the app:
 
 ```bash
 npm start
 ```
 
-9. Open the dashboard:
+10. Open the dashboard:
 
 ```text
 http://localhost:3000
@@ -82,6 +83,7 @@ AUTH_TRUSTED_LOGIN_ORIGINS=
 
 - If `DISCORD_GUILD_ID` is set, slash commands register only in that server and appear quickly.
 - If `DISCORD_GUILD_ID` is omitted, slash commands register globally and can take longer to appear.
+- The bot needs `Server Members Intent` enabled in the Discord Developer Portal because the dashboard verifies whether the linked Discord account can manage each installed server.
 - Website login is no longer handled through a separate Discord OAuth flow in this repo.
 - Blueprint depends on the authenticated Continental ID user having a linked Discord identity in Dashboard.
 - The Dashboard auth API must expose the linked Discord provider user ID for this integration to resolve moderator access correctly.
