@@ -149,6 +149,31 @@
     });
   }
 
+  function bindCountdownControls() {
+    const modeSelect = document.querySelector("[data-countdown-mode]");
+    const scheduleFields = document.querySelector("[data-countdown-schedule-fields]");
+    const modeCopy = document.querySelector("[data-countdown-mode-copy]");
+
+    if (!modeSelect || !scheduleFields || !modeCopy) {
+      return;
+    }
+
+    const modeDescriptions = {
+      "active-days":
+        "Count only chosen weekdays before the target date and skip any excluded dates.",
+      calendar: "Count every calendar day from today to the target date.",
+    };
+
+    function syncCountdownMode() {
+      const mode = safeText(modeSelect.value) || "calendar";
+      scheduleFields.classList.toggle("is-hidden", mode !== "active-days");
+      modeCopy.textContent = modeDescriptions[mode] || modeDescriptions.calendar;
+    }
+
+    modeSelect.addEventListener("change", syncCountdownMode);
+    syncCountdownMode();
+  }
+
   async function handleAuthComplete() {
     const marker = document.querySelector("[data-auth-complete='true']");
     if (!marker) {
@@ -199,5 +224,6 @@
 
   bindLoginButtons();
   bindLinkDiscordButton();
+  bindCountdownControls();
   handleAuthComplete();
 })();

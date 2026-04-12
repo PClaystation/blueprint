@@ -16,6 +16,7 @@ The website now uses the Continental ID auth system from the Dashboard project. 
 - `/ping`
 - `/hello`
 - `/dashboard`
+- `/countdown`
 
 ## What The Dashboard Controls
 
@@ -24,6 +25,9 @@ Each managed server can configure:
 - the `/ping` reply text
 - the `/hello` template
 - whether `/hello` is enabled
+- a shared `/countdown` event with a target date
+- countdown mode using either calendar days or selected weekdays only
+- excluded dates that should be skipped for school breaks, holidays, and other off-days
 - a saved accent color for that server
 
 ## Setup

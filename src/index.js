@@ -21,6 +21,13 @@ const {
   renderGuildSettings,
   renderHome,
 } = require("./render");
+const {
+  getCountdownResult,
+  normalizeCountdownMode,
+  normalizeExcludedDatesInput,
+  normalizeIsoDateInput,
+  normalizeWeekdaySelection,
+} = require("./countdown");
 const { getGuildSettings, saveGuildSettings } = require("./storage");
 
 if (!config.token || !config.clientId || !config.sessionSecret) {
@@ -40,6 +47,9 @@ const commands = [
   new SlashCommandBuilder()
     .setName("dashboard")
     .setDescription("Shows the control center URL for this bot."),
+  new SlashCommandBuilder()
+    .setName("countdown")
+    .setDescription("Shows the server's configured countdown."),
 ];
 
 const client = new Client({
@@ -219,6 +229,14 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
         helloEnabled: request.body.helloEnabled === "on",
         helloTemplate: normalizeText(request.body.helloTemplate, "Hello, {user}.", 160),
         accentColor: normalizeColor(request.body.accentColor),
+        countdownEnabled: request.body.countdownEnabled === "on",
+        countdownTitle: normalizeText(request.body.countdownTitle, "", 80),
+        countdownTargetDate: normalizeIsoDateInput(request.body.countdownTargetDate),
+        countdownMode: normalizeCountdownMode(request.body.countdownMode),
+        countdownWeekdays: normalizeWeekdaySelection(request.body.countdownWeekdays),
+        countdownExcludedDates: normalizeExcludedDatesInput(
+          request.body.countdownExcludedDates,
+        ),
       },
       request.session.user.id,
     );
@@ -315,6 +333,15 @@ async function handleCommand(interaction) {
 
   if (interaction.commandName === "dashboard") {
     await interaction.reply(`Control center: ${config.baseUrl}`);
+    return;
+  }
+
+  if (interaction.commandName === "countdown") {
+    const countdown = getCountdownResult(settings || {});
+    await interaction.reply({
+      content: countdown.commandPreview,
+      ephemeral: countdown.state === "disabled" || countdown.state === "incomplete",
+    });
     return;
   }
 

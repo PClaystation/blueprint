@@ -84,6 +84,8 @@ code {
 .panel,
 .server-card,
 .settings-form,
+.settings-card,
+.preview-card,
 .notice,
 .empty-state {
   border: 1px solid var(--panel-border);
@@ -183,6 +185,11 @@ small,
   gap: 20px;
 }
 
+.settings-stack {
+  display: grid;
+  gap: 20px;
+}
+
 .server-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -222,16 +229,26 @@ small,
   max-width: 720px;
 }
 
-.settings-form label {
+.settings-form label,
+.field-grid label,
+.countdown-fields label {
   display: grid;
   gap: 8px;
 }
 
-.settings-form span {
+.settings-form span,
+.field-grid span,
+.countdown-fields span,
+.subsection-label {
   font-weight: 600;
 }
 
-.settings-form input {
+.settings-form input,
+.field-grid input,
+.field-grid select,
+.countdown-fields input,
+.countdown-fields select,
+.countdown-fields textarea {
   width: 100%;
   min-height: 48px;
   padding: 12px 14px;
@@ -241,7 +258,12 @@ small,
   color: var(--text);
 }
 
-.settings-form input[type="color"] {
+.countdown-fields textarea {
+  resize: vertical;
+}
+
+.settings-form input[type="color"],
+.field-grid input[type="color"] {
   padding: 6px;
 }
 
@@ -261,17 +283,6 @@ small,
   margin-top: 16px;
 }
 
-.checkbox-row {
-  grid-template-columns: auto 1fr;
-  align-items: center;
-}
-
-.checkbox-row input {
-  width: 20px;
-  min-height: 20px;
-  margin: 0;
-}
-
 .notice,
 .empty-state {
   padding: 18px 20px;
@@ -282,6 +293,164 @@ small,
   height: 100%;
   object-fit: cover;
   border-radius: 18px;
+}
+
+.settings-card {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+}
+
+.card-header {
+  display: grid;
+  gap: 8px;
+}
+
+.card-header h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.4vw, 2rem);
+}
+
+.card-copy,
+.preview-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.card-header-spread {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.field-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.checkbox-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.checkbox-row input[type="checkbox"],
+.weekday-pill input[type="checkbox"] {
+  width: 18px;
+  min-height: 18px;
+  padding: 0;
+  margin: 0;
+}
+
+.checkbox-row-wide {
+  grid-column: 1 / -1;
+}
+
+.countdown-card {
+  gap: 24px;
+}
+
+.countdown-layout {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+}
+
+.countdown-fields,
+.countdown-schedule-fields,
+.subsection {
+  display: grid;
+  gap: 18px;
+}
+
+.weekday-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.weekday-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.preview-card {
+  display: grid;
+  gap: 16px;
+  align-self: start;
+  padding: 22px;
+}
+
+.preview-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.countdown-preview {
+  padding: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  background: rgba(2, 6, 23, 0.55);
+  line-height: 1.6;
+}
+
+.preview-meta {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.preview-meta div {
+  display: grid;
+  gap: 4px;
+}
+
+.preview-meta span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.countdown-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.countdown-status-upcoming,
+.countdown-status-today {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+.countdown-status-past {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+}
+
+.countdown-status-incomplete {
+  background: rgba(251, 191, 36, 0.14);
+  color: #fde68a;
+}
+
+.countdown-status-disabled {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
+.is-hidden {
+  display: none;
 }
 
 @media (max-width: 780px) {
@@ -300,5 +469,11 @@ small,
   .topbar-actions {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .card-header-spread,
+  .countdown-layout,
+  .preview-meta {
+    grid-template-columns: 1fr;
   }
 }

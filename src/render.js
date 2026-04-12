@@ -1,3 +1,9 @@
+const {
+  WEEKDAY_OPTIONS,
+  excludedDatesToTextarea,
+  getCountdownResult,
+} = require("./countdown");
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -168,6 +174,22 @@ function renderGuildSettings({
   sessionUser,
   settings,
 }) {
+  const countdown = getCountdownResult(settings);
+  const selectedWeekdays = new Set(settings.countdownWeekdays || []);
+  const countdownPreview = escapeHtml(countdown.commandPreview).replaceAll("\n", "<br />");
+  const countdownStatusClass = `countdown-status countdown-status-${countdown.state}`;
+  const weekdayCheckboxes = WEEKDAY_OPTIONS.map((weekday) => `
+    <label class="weekday-pill">
+      <input
+        type="checkbox"
+        name="countdownWeekdays"
+        value="${weekday.value}"
+        ${selectedWeekdays.has(weekday.value) ? "checked" : ""}
+      />
+      <span>${weekday.shortLabel}</span>
+    </label>
+  `).join("");
+
   const body = `
     <main class="settings-page">
       <section class="section-header">
@@ -180,46 +202,167 @@ function renderGuildSettings({
 
       ${saveMessage ? `<div class="notice">${escapeHtml(saveMessage)}</div>` : ""}
 
-      <form class="settings-form" method="post" action="/dashboard/${guild.id}">
-        <label>
-          <span>Ping response</span>
-          <input
-            name="pingResponse"
-            maxlength="120"
-            value="${escapeHtml(settings.pingResponse)}"
-            required
-          />
-        </label>
+      <form class="settings-stack" method="post" action="/dashboard/${guild.id}">
+        <section class="settings-card">
+          <div class="card-header">
+            <div>
+              <p class="eyebrow">Core commands</p>
+              <h2>Reply settings</h2>
+              <p class="card-copy">
+                Adjust the built-in slash commands and keep the dashboard-owned replies consistent.
+              </p>
+            </div>
+          </div>
 
-        <label>
-          <span>Hello template</span>
-          <input
-            name="helloTemplate"
-            maxlength="160"
-            value="${escapeHtml(settings.helloTemplate)}"
-            required
-          />
-          <small>Use <code>{user}</code> and <code>{server}</code>.</small>
-        </label>
+          <div class="field-grid">
+            <label>
+              <span>Ping response</span>
+              <input
+                name="pingResponse"
+                maxlength="120"
+                value="${escapeHtml(settings.pingResponse)}"
+                required
+              />
+            </label>
 
-        <label class="checkbox-row">
-          <input
-            type="checkbox"
-            name="helloEnabled"
-            value="on"
-            ${settings.helloEnabled ? "checked" : ""}
-          />
-          <span>Enable the <code>/hello</code> command in this server</span>
-        </label>
+            <label>
+              <span>Hello template</span>
+              <input
+                name="helloTemplate"
+                maxlength="160"
+                value="${escapeHtml(settings.helloTemplate)}"
+                required
+              />
+              <small>Use <code>{user}</code> and <code>{server}</code>.</small>
+            </label>
 
-        <label>
-          <span>Accent color</span>
-          <input
-            type="color"
-            name="accentColor"
-            value="${escapeHtml(settings.accentColor)}"
-          />
-        </label>
+            <label class="checkbox-row checkbox-row-wide">
+              <input
+                type="checkbox"
+                name="helloEnabled"
+                value="on"
+                ${settings.helloEnabled ? "checked" : ""}
+              />
+              <span>Enable the <code>/hello</code> command in this server</span>
+            </label>
+
+            <label>
+              <span>Accent color</span>
+              <input
+                type="color"
+                name="accentColor"
+                value="${escapeHtml(settings.accentColor)}"
+              />
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-card countdown-card">
+          <div class="card-header card-header-spread">
+            <div>
+              <p class="eyebrow">Countdown</p>
+              <h2>Server-wide event countdown</h2>
+              <p class="card-copy">
+                Configure one shared countdown that anyone in the server can check with
+                <code>/countdown</code>.
+              </p>
+            </div>
+            <div class="${countdownStatusClass}">${escapeHtml(getCountdownStatusLabel(countdown.state))}</div>
+          </div>
+
+          <div class="countdown-layout">
+            <div class="countdown-fields">
+              <label class="checkbox-row">
+                <input
+                  type="checkbox"
+                  name="countdownEnabled"
+                  value="on"
+                  ${settings.countdownEnabled ? "checked" : ""}
+                />
+                <span>Enable the <code>/countdown</code> command in this server</span>
+              </label>
+
+              <div class="field-grid">
+                <label>
+                  <span>Event name</span>
+                  <input
+                    name="countdownTitle"
+                    maxlength="80"
+                    placeholder="Summer break, launch day, finals week..."
+                    value="${escapeHtml(settings.countdownTitle)}"
+                  />
+                </label>
+
+                <label>
+                  <span>Target date</span>
+                  <input
+                    type="date"
+                    name="countdownTargetDate"
+                    value="${escapeHtml(settings.countdownTargetDate)}"
+                  />
+                </label>
+
+                <label>
+                  <span>Counting mode</span>
+                  <select name="countdownMode" data-countdown-mode>
+                    <option value="calendar" ${settings.countdownMode === "calendar" ? "selected" : ""}>
+                      Calendar days
+                    </option>
+                    <option value="active-days" ${settings.countdownMode === "active-days" ? "selected" : ""}>
+                      Selected weekdays only
+                    </option>
+                  </select>
+                  <small data-countdown-mode-copy>
+                    ${escapeHtml(getCountdownModeCopy(settings.countdownMode))}
+                  </small>
+                </label>
+              </div>
+
+              <div
+                class="countdown-schedule-fields ${settings.countdownMode === "active-days" ? "" : "is-hidden"}"
+                data-countdown-schedule-fields
+              >
+                <div class="subsection">
+                  <span class="subsection-label">Count these weekdays</span>
+                  <div class="weekday-grid">
+                    ${weekdayCheckboxes}
+                  </div>
+                </div>
+
+                <label>
+                  <span>Excluded dates</span>
+                  <textarea
+                    name="countdownExcludedDates"
+                    rows="6"
+                    placeholder="2026-06-19&#10;2026-06-20"
+                  >${escapeHtml(excludedDatesToTextarea(settings.countdownExcludedDates))}</textarea>
+                  <small>Use one ISO date per line for holidays, breaks, or any day that should be skipped.</small>
+                </label>
+              </div>
+            </div>
+
+            <aside class="preview-card">
+              <span class="preview-label">Slash command preview</span>
+              <div class="countdown-preview">${countdownPreview}</div>
+              <div class="preview-meta">
+                <div>
+                  <span>Mode</span>
+                  <strong>${escapeHtml(countdown.modeLabel)}</strong>
+                </div>
+                <div>
+                  <span>Status</span>
+                  <strong>${escapeHtml(getCountdownStatusLabel(countdown.state))}</strong>
+                </div>
+                <div>
+                  <span>Target</span>
+                  <strong>${escapeHtml(countdown.targetDateLabel || "Not set")}</strong>
+                </div>
+              </div>
+              <p class="preview-note">${escapeHtml(countdown.metaLine)}</p>
+              ${countdown.scheduleLine ? `<p class="preview-note">${escapeHtml(countdown.scheduleLine)}</p>` : ""}
+            </aside>
+          </div>
+        </section>
 
         <button class="button" type="submit">Save settings</button>
       </form>
@@ -268,3 +411,31 @@ module.exports = {
   renderGuildSettings,
   renderHome,
 };
+
+function getCountdownStatusLabel(state) {
+  if (state === "upcoming") {
+    return "Live";
+  }
+
+  if (state === "today") {
+    return "Today";
+  }
+
+  if (state === "past") {
+    return "Ended";
+  }
+
+  if (state === "incomplete") {
+    return "Needs setup";
+  }
+
+  return "Disabled";
+}
+
+function getCountdownModeCopy(mode) {
+  if (mode === "active-days") {
+    return "Count only chosen weekdays before the target date and skip any excluded dates.";
+  }
+
+  return "Count every calendar day from today to the target date.";
+}
