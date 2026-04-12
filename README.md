@@ -28,6 +28,7 @@ Each managed server can configure:
 - a shared `/countdown` event with a target date
 - countdown mode using either calendar days or selected weekdays only
 - excluded dates that should be skipped for school breaks, holidays, and other off-days
+- optional daily countdown alerts with a configurable channel and UTC send time
 - a saved accent color for that server
 
 ## Setup

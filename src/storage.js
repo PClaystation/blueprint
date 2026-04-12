@@ -3,8 +3,10 @@ const path = require("node:path");
 
 const Database = require("better-sqlite3");
 const {
+  DEFAULT_DAILY_ALERT_TIME,
   deserializeExcludedDates,
   deserializeWeekdays,
+  normalizeCountdownAlertTime,
   serializeExcludedDates,
   serializeWeekdays,
 } = require("./countdown");
@@ -29,6 +31,9 @@ db.exec(`
     countdown_mode TEXT NOT NULL DEFAULT 'calendar',
     countdown_weekdays TEXT NOT NULL DEFAULT '[1,2,3,4,5]',
     countdown_excluded_dates TEXT NOT NULL DEFAULT '[]',
+    countdown_alert_enabled INTEGER NOT NULL DEFAULT 0,
+    countdown_alert_channel_id TEXT NOT NULL DEFAULT '',
+    countdown_alert_time TEXT NOT NULL DEFAULT '09:00',
     welcome_enabled INTEGER NOT NULL DEFAULT 0,
     welcome_channel_id TEXT NOT NULL DEFAULT '',
     welcome_message_template TEXT NOT NULL DEFAULT 'Welcome to {server}, {mention}.',
@@ -39,12 +44,22 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS countdown_alert_state (
+    guild_id TEXT PRIMARY KEY,
+    last_sent_on TEXT NOT NULL DEFAULT ''
+  )
+`);
+
 ensureColumn("countdown_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("countdown_title", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("countdown_target_date", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("countdown_mode", "TEXT NOT NULL DEFAULT 'calendar'");
 ensureColumn("countdown_weekdays", "TEXT NOT NULL DEFAULT '[1,2,3,4,5]'");
 ensureColumn("countdown_excluded_dates", "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("countdown_alert_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("countdown_alert_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("countdown_alert_time", `TEXT NOT NULL DEFAULT '${DEFAULT_DAILY_ALERT_TIME}'`);
 ensureColumn("welcome_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("welcome_channel_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn(
@@ -65,6 +80,9 @@ const defaults = {
   countdownMode: "calendar",
   countdownWeekdays: [1, 2, 3, 4, 5],
   countdownExcludedDates: [],
+  countdownAlertEnabled: false,
+  countdownAlertChannelId: "",
+  countdownAlertTime: DEFAULT_DAILY_ALERT_TIME,
   ...welcomeDefaults,
   ...autoRoleDefaults,
 };
@@ -90,6 +108,9 @@ function getGuildSettings(guildId) {
     countdownMode: row.countdown_mode,
     countdownWeekdays: deserializeWeekdays(row.countdown_weekdays),
     countdownExcludedDates: deserializeExcludedDates(row.countdown_excluded_dates),
+    countdownAlertEnabled: Boolean(row.countdown_alert_enabled),
+    countdownAlertChannelId: row.countdown_alert_channel_id,
+    countdownAlertTime: normalizeCountdownAlertTime(row.countdown_alert_time),
     welcomeEnabled: Boolean(row.welcome_enabled),
     welcomeChannelId: row.welcome_channel_id,
     welcomeMessageTemplate: row.welcome_message_template,
@@ -114,6 +135,9 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       countdown_mode,
       countdown_weekdays,
       countdown_excluded_dates,
+      countdown_alert_enabled,
+      countdown_alert_channel_id,
+      countdown_alert_time,
       welcome_enabled,
       welcome_channel_id,
       welcome_message_template,
@@ -121,7 +145,7 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       auto_role_role_id,
       updated_by_user_id,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(guild_id) DO UPDATE SET
       ping_response = excluded.ping_response,
       hello_enabled = excluded.hello_enabled,
@@ -133,6 +157,9 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       countdown_mode = excluded.countdown_mode,
       countdown_weekdays = excluded.countdown_weekdays,
       countdown_excluded_dates = excluded.countdown_excluded_dates,
+      countdown_alert_enabled = excluded.countdown_alert_enabled,
+      countdown_alert_channel_id = excluded.countdown_alert_channel_id,
+      countdown_alert_time = excluded.countdown_alert_time,
       welcome_enabled = excluded.welcome_enabled,
       welcome_channel_id = excluded.welcome_channel_id,
       welcome_message_template = excluded.welcome_message_template,
@@ -152,6 +179,9 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
     settings.countdownMode,
     serializeWeekdays(settings.countdownWeekdays),
     serializeExcludedDates(settings.countdownExcludedDates),
+    settings.countdownAlertEnabled ? 1 : 0,
+    settings.countdownAlertChannelId,
+    normalizeCountdownAlertTime(settings.countdownAlertTime),
     settings.welcomeEnabled ? 1 : 0,
     settings.welcomeChannelId,
     settings.welcomeMessageTemplate,
@@ -165,9 +195,28 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
 
 module.exports = {
   defaults,
+  getCountdownAlertLastSentOn,
   getGuildSettings,
   saveGuildSettings,
+  setCountdownAlertLastSentOn,
 };
+
+function getCountdownAlertLastSentOn(guildId) {
+  const row = db
+    .prepare("SELECT last_sent_on FROM countdown_alert_state WHERE guild_id = ?")
+    .get(guildId);
+
+  return row?.last_sent_on || "";
+}
+
+function setCountdownAlertLastSentOn(guildId, isoDate) {
+  db.prepare(`
+    INSERT INTO countdown_alert_state (guild_id, last_sent_on)
+    VALUES (?, ?)
+    ON CONFLICT(guild_id) DO UPDATE SET
+      last_sent_on = excluded.last_sent_on
+  `).run(guildId, isoDate);
+}
 
 function ensureColumn(name, definition) {
   const columns = db.prepare("PRAGMA table_info(guild_settings)").all();

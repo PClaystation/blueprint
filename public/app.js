@@ -153,6 +153,8 @@
     const modeSelect = document.querySelector("[data-countdown-mode]");
     const scheduleFields = document.querySelector("[data-countdown-schedule-fields]");
     const modeCopy = document.querySelector("[data-countdown-mode-copy]");
+    const alertToggle = document.querySelector("input[name='countdownAlertEnabled']");
+    const alertFields = document.querySelector("[data-countdown-alert-fields]");
 
     if (!modeSelect || !scheduleFields || !modeCopy) {
       return;
@@ -160,7 +162,7 @@
 
     const modeDescriptions = {
       "active-days":
-        "Count only chosen weekdays before the target date and skip any excluded dates.",
+        "Count only selected weekdays after today and before the target date. Excluded dates only reduce the countdown when they fall on one of those counted days.",
       calendar: "Count every calendar day from today to the target date.",
     };
 
@@ -172,6 +174,15 @@
 
     modeSelect.addEventListener("change", syncCountdownMode);
     syncCountdownMode();
+
+    if (alertToggle && alertFields) {
+      function syncCountdownAlerts() {
+        alertFields.classList.toggle("is-hidden", !alertToggle.checked);
+      }
+
+      alertToggle.addEventListener("change", syncCountdownAlerts);
+      syncCountdownAlerts();
+    }
   }
 
   async function handleAuthComplete() {

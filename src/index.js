@@ -22,11 +22,16 @@ const {
   renderHome,
 } = require("./render");
 const {
+  buildCountdownAlertMessage,
+  DEFAULT_DAILY_ALERT_TIME,
   getCountdownResult,
+  normalizeCountdownAlertTime,
   normalizeCountdownMode,
   normalizeExcludedDatesInput,
   normalizeIsoDateInput,
   normalizeWeekdaySelection,
+  shouldSendCountdownAlert,
+  validateCountdownSettings,
 } = require("./countdown");
 const {
   assignAutoRole,
@@ -40,7 +45,12 @@ const {
   sendWelcomeMessage,
   validateWelcomeSettings,
 } = require("./modules/welcome");
-const { getGuildSettings, saveGuildSettings } = require("./storage");
+const {
+  getCountdownAlertLastSentOn,
+  getGuildSettings,
+  saveGuildSettings,
+  setCountdownAlertLastSentOn,
+} = require("./storage");
 
 if (!config.token || !config.clientId || !config.sessionSecret) {
   console.error(
@@ -95,6 +105,7 @@ app.use(
   }),
 );
 app.use(express.static(path.join(process.cwd(), "public")));
+app.use("/images", express.static(path.join(process.cwd(), "images")));
 app.use(
   "/auth-popup",
   express.static(path.resolve(process.cwd(), "..", "Dashboard", "login popup")),
@@ -256,11 +267,18 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       countdownExcludedDates: normalizeExcludedDatesInput(
         request.body.countdownExcludedDates,
       ),
+      countdownAlertEnabled: request.body.countdownAlertEnabled === "on",
+      countdownAlertChannelId: normalizeId(request.body.countdownAlertChannelId),
+      countdownAlertTime: normalizeCountdownAlertTime(
+        request.body.countdownAlertTime,
+        DEFAULT_DAILY_ALERT_TIME,
+      ),
       ...normalizeWelcomeSettings(request.body),
       ...normalizeAutoRoleSettings(request.body),
     };
     const botMember = await getBotGuildMember(guild);
     const validationErrors = [
+      ...validateCountdownSettings(settings, guild, botMember),
       ...validateWelcomeSettings(settings, guild, botMember),
       ...validateAutoRoleSettings(settings, guild, botMember),
     ];
@@ -338,6 +356,7 @@ async function registerCommands() {
 
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
+  startCountdownAlertScheduler();
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -575,6 +594,62 @@ async function getGuildDashboardOptions(guild) {
   };
 }
 
+let countdownAlertSweepInFlight = false;
+
+function startCountdownAlertScheduler() {
+  void runCountdownAlertSweep();
+
+  setInterval(() => {
+    void runCountdownAlertSweep();
+  }, 30_000);
+}
+
+async function runCountdownAlertSweep() {
+  if (countdownAlertSweepInFlight) {
+    return;
+  }
+
+  countdownAlertSweepInFlight = true;
+
+  try {
+    const now = new Date();
+
+    for (const guild of client.guilds.cache.values()) {
+      try {
+        const settings = getGuildSettings(guild.id);
+        const lastSentOn = getCountdownAlertLastSentOn(guild.id);
+
+        if (!shouldSendCountdownAlert(settings, now, lastSentOn)) {
+          continue;
+        }
+
+        await guild.channels.fetch();
+        const botMember = await getBotGuildMember(guild);
+        const errors = validateCountdownSettings(settings, guild, botMember);
+        if (errors.length > 0) {
+          continue;
+        }
+
+        const channel = guild.channels.cache.get(settings.countdownAlertChannelId);
+        if (!channel || !channel.isTextBased()) {
+          continue;
+        }
+
+        await channel.send(buildCountdownAlertMessage(settings, { now }));
+        setCountdownAlertLastSentOn(guild.id, now.toISOString().slice(0, 10));
+      } catch (error) {
+        console.error(`Countdown alert failed for guild ${guild.id}.`);
+        console.error(error);
+      }
+    }
+  } catch (error) {
+    console.error("Countdown alert sweep failed.");
+    console.error(error);
+  } finally {
+    countdownAlertSweepInFlight = false;
+  }
+}
+
 async function getBotGuildMember(guild) {
   if (guild.members.me) {
     return guild.members.me;
@@ -614,6 +689,10 @@ function normalizeText(value, fallback, maxLength) {
 
 function normalizeToken(value) {
   return normalizeText(value, "", 5000);
+}
+
+function normalizeId(value) {
+  return /^\d{16,20}$/.test(String(value || "").trim()) ? String(value).trim() : "";
 }
 
 function safeOriginFromUrl(value) {
