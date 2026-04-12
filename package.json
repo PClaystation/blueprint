@@ -1,0 +1,20 @@
+{
+  "name": "blueprint-discord-bot",
+  "version": "1.0.0",
+  "description": "A very simple Discord slash command bot.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.1.1",
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "express-session": "^1.18.1"
+  }
+}
