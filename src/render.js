@@ -3,15 +3,9 @@ const {
   excludedDatesToTextarea,
   getCountdownResult,
 } = require("./countdown");
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+const { escapeHtml } = require("./html");
+const { renderAutoRoleModuleCard } = require("./modules/auto-role");
+const { renderWelcomeModuleCard } = require("./modules/welcome");
 
 function renderLayout({
   authConfig,
@@ -169,7 +163,10 @@ function renderDashboard({
 
 function renderGuildSettings({
   authConfig,
+  channelOptions,
+  errorMessage,
   guild,
+  roleOptions,
   saveMessage,
   sessionUser,
   settings,
@@ -201,6 +198,7 @@ function renderGuildSettings({
       </section>
 
       ${saveMessage ? `<div class="notice">${escapeHtml(saveMessage)}</div>` : ""}
+      ${errorMessage ? `<div class="notice notice-error">${escapeHtml(errorMessage)}</div>` : ""}
 
       <form class="settings-stack" method="post" action="/dashboard/${guild.id}">
         <section class="settings-card">
@@ -363,6 +361,17 @@ function renderGuildSettings({
             </aside>
           </div>
         </section>
+
+        ${renderWelcomeModuleCard({
+          channelOptions,
+          guildName: guild.name,
+          settings,
+        })}
+
+        ${renderAutoRoleModuleCard({
+          roleOptions,
+          settings,
+        })}
 
         <button class="button" type="submit">Save settings</button>
       </form>

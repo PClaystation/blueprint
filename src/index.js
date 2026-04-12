@@ -28,6 +28,18 @@ const {
   normalizeIsoDateInput,
   normalizeWeekdaySelection,
 } = require("./countdown");
+const {
+  assignAutoRole,
+  getAutoRoleOptions,
+  normalizeAutoRoleSettings,
+  validateAutoRoleSettings,
+} = require("./modules/auto-role");
+const {
+  getWelcomeChannelOptions,
+  normalizeWelcomeSettings,
+  sendWelcomeMessage,
+  validateWelcomeSettings,
+} = require("./modules/welcome");
 const { getGuildSettings, saveGuildSettings } = require("./storage");
 
 if (!config.token || !config.clientId || !config.sessionSecret) {
@@ -196,10 +208,14 @@ app.get("/dashboard/:guildId", requireAuthPage, async (request, response, next) 
       return;
     }
 
+    const dashboardOptions = await getGuildDashboardOptions(guild);
+
     response.send(
       renderGuildSettings({
         authConfig: getAuthClientConfig(),
+        channelOptions: dashboardOptions.channelOptions,
         guild,
+        roleOptions: dashboardOptions.roleOptions,
         saveMessage: request.query.saved ? "Settings updated." : "",
         sessionUser: response.locals.sessionUser,
         settings: getGuildSettings(guild.id),
@@ -222,22 +238,48 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       return;
     }
 
+    const dashboardOptions = await getGuildDashboardOptions(guild);
+    const settings = {
+      pingResponse: normalizeText(request.body.pingResponse, "Pong.", 120),
+      helloEnabled: request.body.helloEnabled === "on",
+      helloTemplate: normalizeText(request.body.helloTemplate, "Hello, {user}.", 160),
+      accentColor: normalizeColor(request.body.accentColor),
+      countdownEnabled: request.body.countdownEnabled === "on",
+      countdownTitle: normalizeText(request.body.countdownTitle, "", 80),
+      countdownTargetDate: normalizeIsoDateInput(request.body.countdownTargetDate),
+      countdownMode: normalizeCountdownMode(request.body.countdownMode),
+      countdownWeekdays: normalizeWeekdaySelection(request.body.countdownWeekdays),
+      countdownExcludedDates: normalizeExcludedDatesInput(
+        request.body.countdownExcludedDates,
+      ),
+      ...normalizeWelcomeSettings(request.body),
+      ...normalizeAutoRoleSettings(request.body),
+    };
+    const botMember = await getBotGuildMember(guild);
+    const validationErrors = [
+      ...validateWelcomeSettings(settings, guild, botMember),
+      ...validateAutoRoleSettings(settings, guild, botMember),
+    ];
+
+    if (validationErrors.length > 0) {
+      response.status(400).send(
+        renderGuildSettings({
+          authConfig: getAuthClientConfig(),
+          channelOptions: dashboardOptions.channelOptions,
+          errorMessage: validationErrors[0],
+          guild,
+          roleOptions: dashboardOptions.roleOptions,
+          saveMessage: "",
+          sessionUser: response.locals.sessionUser,
+          settings,
+        }),
+      );
+      return;
+    }
+
     saveGuildSettings(
       guild.id,
-      {
-        pingResponse: normalizeText(request.body.pingResponse, "Pong.", 120),
-        helloEnabled: request.body.helloEnabled === "on",
-        helloTemplate: normalizeText(request.body.helloTemplate, "Hello, {user}.", 160),
-        accentColor: normalizeColor(request.body.accentColor),
-        countdownEnabled: request.body.countdownEnabled === "on",
-        countdownTitle: normalizeText(request.body.countdownTitle, "", 80),
-        countdownTargetDate: normalizeIsoDateInput(request.body.countdownTargetDate),
-        countdownMode: normalizeCountdownMode(request.body.countdownMode),
-        countdownWeekdays: normalizeWeekdaySelection(request.body.countdownWeekdays),
-        countdownExcludedDates: normalizeExcludedDatesInput(
-          request.body.countdownExcludedDates,
-        ),
-      },
+      settings,
       request.session.user.id,
     );
 
@@ -300,6 +342,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   await handleCommand(interaction);
+});
+
+client.on(Events.GuildMemberAdd, async (member) => {
+  const settings = getGuildSettings(member.guild.id);
+
+  try {
+    await assignAutoRole(member, settings);
+    await sendWelcomeMessage(member, settings);
+  } catch (error) {
+    console.error(`Failed onboarding flow for guild ${member.guild.id}.`);
+    console.error(error);
+  }
 });
 
 /**
@@ -491,11 +545,7 @@ async function getManagedGuild(discordUserId, guildId) {
       return null;
     }
 
-    return {
-      iconUrl: guild.iconURL({ size: 128 }),
-      id: guild.id,
-      name: guild.name,
-    };
+    return guild;
   } catch (error) {
     if (
       error instanceof DiscordAPIError &&
@@ -506,6 +556,24 @@ async function getManagedGuild(discordUserId, guildId) {
 
     throw error;
   }
+}
+
+async function getGuildDashboardOptions(guild) {
+  await Promise.all([guild.channels.fetch(), guild.roles.fetch()]);
+  const botMember = await getBotGuildMember(guild);
+
+  return {
+    channelOptions: getWelcomeChannelOptions(guild),
+    roleOptions: getAutoRoleOptions(guild, botMember),
+  };
+}
+
+async function getBotGuildMember(guild) {
+  if (guild.members.me) {
+    return guild.members.me;
+  }
+
+  return guild.members.fetch(client.user.id);
 }
 
 function normalizeColor(value) {

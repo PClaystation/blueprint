@@ -8,6 +8,8 @@ const {
   serializeExcludedDates,
   serializeWeekdays,
 } = require("./countdown");
+const { defaults: autoRoleDefaults } = require("./modules/auto-role");
+const { defaults: welcomeDefaults } = require("./modules/welcome");
 
 const dataDir = path.join(process.cwd(), "data");
 fs.mkdirSync(dataDir, { recursive: true });
@@ -27,6 +29,11 @@ db.exec(`
     countdown_mode TEXT NOT NULL DEFAULT 'calendar',
     countdown_weekdays TEXT NOT NULL DEFAULT '[1,2,3,4,5]',
     countdown_excluded_dates TEXT NOT NULL DEFAULT '[]',
+    welcome_enabled INTEGER NOT NULL DEFAULT 0,
+    welcome_channel_id TEXT NOT NULL DEFAULT '',
+    welcome_message_template TEXT NOT NULL DEFAULT 'Welcome to {server}, {mention}.',
+    auto_role_enabled INTEGER NOT NULL DEFAULT 0,
+    auto_role_role_id TEXT NOT NULL DEFAULT '',
     updated_by_user_id TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
@@ -38,6 +45,14 @@ ensureColumn("countdown_target_date", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("countdown_mode", "TEXT NOT NULL DEFAULT 'calendar'");
 ensureColumn("countdown_weekdays", "TEXT NOT NULL DEFAULT '[1,2,3,4,5]'");
 ensureColumn("countdown_excluded_dates", "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("welcome_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("welcome_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn(
+  "welcome_message_template",
+  "TEXT NOT NULL DEFAULT 'Welcome to {server}, {mention}.'",
+);
+ensureColumn("auto_role_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("auto_role_role_id", "TEXT NOT NULL DEFAULT ''");
 
 const defaults = {
   pingResponse: "Pong.",
@@ -50,6 +65,8 @@ const defaults = {
   countdownMode: "calendar",
   countdownWeekdays: [1, 2, 3, 4, 5],
   countdownExcludedDates: [],
+  ...welcomeDefaults,
+  ...autoRoleDefaults,
 };
 
 function getGuildSettings(guildId) {
@@ -62,6 +79,7 @@ function getGuildSettings(guildId) {
   }
 
   return {
+    ...defaults,
     pingResponse: row.ping_response,
     helloEnabled: Boolean(row.hello_enabled),
     helloTemplate: row.hello_template,
@@ -72,6 +90,11 @@ function getGuildSettings(guildId) {
     countdownMode: row.countdown_mode,
     countdownWeekdays: deserializeWeekdays(row.countdown_weekdays),
     countdownExcludedDates: deserializeExcludedDates(row.countdown_excluded_dates),
+    welcomeEnabled: Boolean(row.welcome_enabled),
+    welcomeChannelId: row.welcome_channel_id,
+    welcomeMessageTemplate: row.welcome_message_template,
+    autoRoleEnabled: Boolean(row.auto_role_enabled),
+    autoRoleRoleId: row.auto_role_role_id,
     updatedAt: row.updated_at,
     updatedByUserId: row.updated_by_user_id,
   };
@@ -91,9 +114,14 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       countdown_mode,
       countdown_weekdays,
       countdown_excluded_dates,
+      welcome_enabled,
+      welcome_channel_id,
+      welcome_message_template,
+      auto_role_enabled,
+      auto_role_role_id,
       updated_by_user_id,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(guild_id) DO UPDATE SET
       ping_response = excluded.ping_response,
       hello_enabled = excluded.hello_enabled,
@@ -105,6 +133,11 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       countdown_mode = excluded.countdown_mode,
       countdown_weekdays = excluded.countdown_weekdays,
       countdown_excluded_dates = excluded.countdown_excluded_dates,
+      welcome_enabled = excluded.welcome_enabled,
+      welcome_channel_id = excluded.welcome_channel_id,
+      welcome_message_template = excluded.welcome_message_template,
+      auto_role_enabled = excluded.auto_role_enabled,
+      auto_role_role_id = excluded.auto_role_role_id,
       updated_by_user_id = excluded.updated_by_user_id,
       updated_at = CURRENT_TIMESTAMP
   `).run(
@@ -119,6 +152,11 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
     settings.countdownMode,
     serializeWeekdays(settings.countdownWeekdays),
     serializeExcludedDates(settings.countdownExcludedDates),
+    settings.welcomeEnabled ? 1 : 0,
+    settings.welcomeChannelId,
+    settings.welcomeMessageTemplate,
+    settings.autoRoleEnabled ? 1 : 0,
+    settings.autoRoleRoleId,
     updatedByUserId,
   );
 

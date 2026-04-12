@@ -246,6 +246,7 @@ small,
 .settings-form input,
 .field-grid input,
 .field-grid select,
+.field-grid textarea,
 .countdown-fields input,
 .countdown-fields select,
 .countdown-fields textarea {
@@ -262,6 +263,10 @@ small,
   resize: vertical;
 }
 
+.field-grid textarea {
+  resize: vertical;
+}
+
 .settings-form input[type="color"],
 .field-grid input[type="color"] {
   padding: 6px;
@@ -275,6 +280,11 @@ small,
 .notice strong {
   display: block;
   margin-bottom: 8px;
+}
+
+.notice-error {
+  border-color: rgba(248, 113, 113, 0.32);
+  background: rgba(127, 29, 29, 0.3);
 }
 
 .notice-actions {
@@ -357,11 +367,22 @@ small,
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
 }
 
+.module-layout {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.9fr);
+}
+
 .countdown-fields,
+.module-fields,
 .countdown-schedule-fields,
 .subsection {
   display: grid;
   gap: 18px;
+}
+
+.module-field-wide {
+  grid-column: 1 / -1;
 }
 
 .weekday-grid {
@@ -414,6 +435,10 @@ small,
   gap: 4px;
 }
 
+.preview-meta-dual {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .preview-meta span {
   color: var(--muted);
   font-size: 0.82rem;
@@ -449,6 +474,30 @@ small,
   color: #cbd5e1;
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.status-pill-live {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+.status-pill-incomplete {
+  background: rgba(251, 191, 36, 0.14);
+  color: #fde68a;
+}
+
+.status-pill-disabled {
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+}
+
 .is-hidden {
   display: none;
 }
@@ -472,6 +521,7 @@ small,
   }
 
   .card-header-spread,
+  .module-layout,
   .countdown-layout,
   .preview-meta {
     grid-template-columns: 1fr;
