@@ -1,6 +1,6 @@
 const { ChannelType, PermissionFlagsBits } = require("discord.js");
 
-const { escapeHtml } = require("../html");
+const { escapeHtml, renderFeatureToggle } = require("../html");
 
 const defaults = {
   welcomeEnabled: false,
@@ -89,15 +89,16 @@ function renderWelcomeModuleCard({ channelOptions, guildName, settings }) {
 
       <div class="module-layout">
         <div class="module-fields">
-          <label class="checkbox-row">
-            <input
-              type="checkbox"
-              name="welcomeEnabled"
-              value="on"
-              ${settings.welcomeEnabled ? "checked" : ""}
-            />
-            <span>Enable the welcome module in this server</span>
-          </label>
+          ${renderFeatureToggle({
+            checked: settings.welcomeEnabled,
+            descriptionHtml:
+              "Control whether Blueprint actively greets new members in this server. Disabling it stops the welcome flow entirely.",
+            disabledLabel: "Module off",
+            enabledLabel: "Module on",
+            inputName: "welcomeEnabled",
+            kindLabel: "Module status",
+            titleHtml: "Welcome messages",
+          })}
 
           <div class="field-grid">
             <label>

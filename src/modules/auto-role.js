@@ -1,6 +1,6 @@
 const { PermissionFlagsBits } = require("discord.js");
 
-const { escapeHtml } = require("../html");
+const { escapeHtml, renderFeatureToggle } = require("../html");
 
 const defaults = {
   autoRoleEnabled: false,
@@ -81,15 +81,16 @@ function renderAutoRoleModuleCard({ roleOptions, settings }) {
 
       <div class="module-layout">
         <div class="module-fields">
-          <label class="checkbox-row">
-            <input
-              type="checkbox"
-              name="autoRoleEnabled"
-              value="on"
-              ${settings.autoRoleEnabled ? "checked" : ""}
-            />
-            <span>Enable automatic role assignment for new members</span>
-          </label>
+          ${renderFeatureToggle({
+            checked: settings.autoRoleEnabled,
+            descriptionHtml:
+              "Decide whether Blueprint assigns a default join role at all. Turning this off fully stops automatic role grants for new members.",
+            disabledLabel: "Module off",
+            enabledLabel: "Module on",
+            inputName: "autoRoleEnabled",
+            kindLabel: "Module status",
+            titleHtml: "Automatic role assignment",
+          })}
 
           <div class="field-grid">
             <label>

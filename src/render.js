@@ -3,7 +3,7 @@ const {
   excludedDatesToTextarea,
   getCountdownResult,
 } = require("./countdown");
-const { escapeHtml } = require("./html");
+const { escapeHtml, renderFeatureToggle } = require("./html");
 const { renderAutoRoleModuleCard } = require("./modules/auto-role");
 const { renderWelcomeModuleCard } = require("./modules/welcome");
 
@@ -212,6 +212,17 @@ function renderGuildSettings({
             </div>
           </div>
 
+          ${renderFeatureToggle({
+            checked: settings.helloEnabled,
+            descriptionHtml:
+              "Make <code>/hello</code> available in this server, or turn it off completely when you do not want the command exposed.",
+            disabledLabel: "Command off",
+            enabledLabel: "Command on",
+            inputName: "helloEnabled",
+            kindLabel: "Command status",
+            titleHtml: "<code>/hello</code> access",
+          })}
+
           <div class="field-grid">
             <label>
               <span>Ping response</span>
@@ -232,16 +243,6 @@ function renderGuildSettings({
                 required
               />
               <small>Use <code>{user}</code> and <code>{server}</code>.</small>
-            </label>
-
-            <label class="checkbox-row checkbox-row-wide">
-              <input
-                type="checkbox"
-                name="helloEnabled"
-                value="on"
-                ${settings.helloEnabled ? "checked" : ""}
-              />
-              <span>Enable the <code>/hello</code> command in this server</span>
             </label>
 
             <label>
@@ -270,15 +271,16 @@ function renderGuildSettings({
 
           <div class="countdown-layout">
             <div class="countdown-fields">
-              <label class="checkbox-row">
-                <input
-                  type="checkbox"
-                  name="countdownEnabled"
-                  value="on"
-                  ${settings.countdownEnabled ? "checked" : ""}
-                />
-                <span>Enable the <code>/countdown</code> command in this server</span>
-              </label>
+              ${renderFeatureToggle({
+                checked: settings.countdownEnabled,
+                descriptionHtml:
+                  "Turn the shared <code>/countdown</code> module on or off for the whole server. When disabled, Blueprint stops surfacing the event entirely.",
+                disabledLabel: "Module off",
+                enabledLabel: "Module on",
+                inputName: "countdownEnabled",
+                kindLabel: "Module status",
+                titleHtml: "Countdown visibility",
+              })}
 
               <div class="field-grid">
                 <label>
