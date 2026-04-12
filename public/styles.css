@@ -255,6 +255,16 @@ small,
   color: var(--text);
 }
 
+.button-danger {
+  background: linear-gradient(135deg, #fb7185, #e11d48);
+  color: #fff1f2;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .feature-list {
   margin: 20px 0 0;
   padding-left: 18px;
@@ -478,6 +488,16 @@ small,
 
 .subsection-header {
   gap: 16px;
+}
+
+.danger-zone {
+  padding-top: 4px;
+  border-top: 1px solid rgba(248, 113, 113, 0.16);
+}
+
+.danger-zone-actions {
+  display: grid;
+  gap: 12px;
 }
 
 .field-grid {

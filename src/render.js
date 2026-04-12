@@ -216,6 +216,14 @@ function renderGuildSettings({
   const countdown = getCountdownResult(settings);
   const countdownAlert = getCountdownAlertSummary(settings, channelOptions, countdown);
   const selectedWeekdays = new Set(settings.countdownWeekdays || []);
+  const hasSavedCountdown = Boolean(
+    settings.countdownEnabled ||
+    settings.countdownTitle ||
+    settings.countdownTargetDate ||
+    excludedDatesToTextarea(settings.countdownExcludedDates) ||
+    settings.countdownAlertEnabled ||
+    settings.countdownAlertChannelId,
+  );
   const countdownPreview = escapeHtml(countdown.commandPreview).replaceAll("\n", "<br />");
   const countdownAlertPreview = escapeHtml(countdownAlert.preview).replaceAll("\n", "<br />");
   const countdownStatusClass = `countdown-status countdown-status-${countdown.state}`;
@@ -442,6 +450,35 @@ function renderGuildSettings({
                     />
                     <small>Uses UTC so the schedule stays stable across deployments.</small>
                   </label>
+                </div>
+              </div>
+
+              <div class="subsection danger-zone">
+                <div class="card-header">
+                  <div>
+                    <span class="subsection-label">Remove countdown</span>
+                    <p class="card-copy">
+                      Clear the shared countdown, excluded dates, and daily alert settings for this server.
+                    </p>
+                  </div>
+                </div>
+                <div class="danger-zone-actions">
+                  <button
+                    class="button button-danger"
+                    type="submit"
+                    formaction="/dashboard/${guild.id}/countdown/remove"
+                    formmethod="post"
+                    formnovalidate
+                    onclick="return window.confirm('Remove this server\\'s countdown and clear its alert settings?');"
+                    ${hasSavedCountdown ? "" : "disabled"}
+                  >
+                    Remove countdown
+                  </button>
+                  <p class="preview-note">
+                    ${hasSavedCountdown
+                      ? "This clears the countdown module without touching welcome, auto-role, or core reply settings."
+                      : "There is no saved countdown configuration to remove right now."}
+                  </p>
                 </div>
               </div>
             </div>

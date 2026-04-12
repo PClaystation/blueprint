@@ -62,6 +62,21 @@ function normalizeExcludedDatesInput(value) {
   ).sort((left, right) => left.localeCompare(right));
 }
 
+function clearCountdownSettings(settings = {}) {
+  return {
+    ...settings,
+    countdownAlertChannelId: "",
+    countdownAlertEnabled: false,
+    countdownAlertTime: DEFAULT_DAILY_ALERT_TIME,
+    countdownEnabled: false,
+    countdownExcludedDates: [],
+    countdownMode: "calendar",
+    countdownTargetDate: "",
+    countdownTitle: "",
+    countdownWeekdays: [...DEFAULT_WEEKDAYS],
+  };
+}
+
 function serializeWeekdays(value) {
   return JSON.stringify(normalizeWeekdaySelection(value));
 }
@@ -533,6 +548,7 @@ function getIgnoredExclusionReason(isoDate, today, target, allowedWeekdays) {
 
 module.exports = {
   analyzeActiveDayCountdown,
+  clearCountdownSettings,
   DEFAULT_DAILY_ALERT_TIME,
   DEFAULT_WEEKDAYS,
   WEEKDAY_OPTIONS,

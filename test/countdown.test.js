@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   analyzeActiveDayCountdown,
+  clearCountdownSettings,
   getCountdownResult,
 } = require("../src/countdown");
 
@@ -76,4 +77,34 @@ test("incomplete countdown keeps entered exclusions visible without overstating 
     result.scheduleLine,
     "Counting: Mon, Tue, Wed, Thu, Fri | Entered exclusions: 2 dates",
   );
+});
+
+test("clearing countdown settings preserves other modules", () => {
+  const cleared = clearCountdownSettings({
+    autoRoleEnabled: true,
+    countdownAlertChannelId: "123456789012345678",
+    countdownAlertEnabled: true,
+    countdownAlertTime: "17:30",
+    countdownEnabled: true,
+    countdownExcludedDates: ["2026-04-15"],
+    countdownMode: "active-days",
+    countdownTargetDate: "2026-06-10",
+    countdownTitle: "Summer break",
+    countdownWeekdays: [1, 2, 3, 4],
+    helloEnabled: true,
+    pingResponse: "Pong.",
+  });
+
+  assert.equal(cleared.countdownEnabled, false);
+  assert.equal(cleared.countdownTitle, "");
+  assert.equal(cleared.countdownTargetDate, "");
+  assert.equal(cleared.countdownMode, "calendar");
+  assert.deepEqual(cleared.countdownWeekdays, [1, 2, 3, 4, 5]);
+  assert.deepEqual(cleared.countdownExcludedDates, []);
+  assert.equal(cleared.countdownAlertEnabled, false);
+  assert.equal(cleared.countdownAlertChannelId, "");
+  assert.equal(cleared.countdownAlertTime, "09:00");
+  assert.equal(cleared.autoRoleEnabled, true);
+  assert.equal(cleared.helloEnabled, true);
+  assert.equal(cleared.pingResponse, "Pong.");
 });

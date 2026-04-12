@@ -193,7 +193,12 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
   return getGuildSettings(guildId);
 }
 
+function clearCountdownAlertLastSentOn(guildId) {
+  db.prepare("DELETE FROM countdown_alert_state WHERE guild_id = ?").run(guildId);
+}
+
 module.exports = {
+  clearCountdownAlertLastSentOn,
   defaults,
   getCountdownAlertLastSentOn,
   getGuildSettings,

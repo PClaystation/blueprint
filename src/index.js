@@ -23,6 +23,7 @@ const {
 } = require("./render");
 const {
   buildCountdownAlertMessage,
+  clearCountdownSettings,
   DEFAULT_DAILY_ALERT_TIME,
   getCountdownResult,
   normalizeCountdownAlertTime,
@@ -46,6 +47,7 @@ const {
   validateWelcomeSettings,
 } = require("./modules/welcome");
 const {
+  clearCountdownAlertLastSentOn,
   getCountdownAlertLastSentOn,
   getGuildSettings,
   saveGuildSettings,
@@ -234,7 +236,7 @@ app.get("/dashboard/:guildId", requireAuthPage, async (request, response, next) 
         channelOptions: dashboardOptions.channelOptions,
         guild,
         roleOptions: dashboardOptions.roleOptions,
-        saveMessage: request.query.saved ? "Settings updated." : "",
+        saveMessage: getSettingsSaveMessage(request.query.saved),
         sessionUser: response.locals.sessionUser,
         settings: getGuildSettings(guild.id),
       }),
@@ -309,6 +311,31 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
     );
 
     response.redirect(`/dashboard/${guild.id}?saved=1`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/dashboard/:guildId/countdown/remove", requireAuthPage, async (request, response, next) => {
+  try {
+    const guild = await getManagedGuild(
+      request.session.user.discordUserId,
+      request.params.guildId,
+    );
+
+    if (!guild) {
+      response.status(404).send("Server not found or not manageable.");
+      return;
+    }
+
+    saveGuildSettings(
+      guild.id,
+      clearCountdownSettings(getGuildSettings(guild.id)),
+      request.session.user.id,
+    );
+    clearCountdownAlertLastSentOn(guild.id);
+
+    response.redirect(`/dashboard/${guild.id}?saved=countdown-removed`);
   } catch (error) {
     next(error);
   }
@@ -696,6 +723,14 @@ function normalizeToken(value) {
 
 function normalizeId(value) {
   return /^\d{16,20}$/.test(String(value || "").trim()) ? String(value).trim() : "";
+}
+
+function getSettingsSaveMessage(savedState) {
+  if (savedState === "countdown-removed") {
+    return "Countdown removed.";
+  }
+
+  return savedState ? "Settings updated." : "";
 }
 
 function safeOriginFromUrl(value) {
