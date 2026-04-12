@@ -106,6 +106,9 @@ app.use(
 );
 app.use(express.static(path.join(process.cwd(), "public")));
 app.use("/images", express.static(path.join(process.cwd(), "images")));
+app.get("/favicon.ico", (request, response) => {
+  response.sendFile(path.join(process.cwd(), "images", "blueprint-pfp2.png"));
+});
 app.use(
   "/auth-popup",
   express.static(path.resolve(process.cwd(), "..", "Dashboard", "login popup")),

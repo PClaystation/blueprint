@@ -15,13 +15,18 @@ function renderLayout({
   sessionUser,
   title,
 }) {
+  const fallbackAvatar = "/images/C2-new-white.png";
   const authButton = sessionUser
     ? `<a class="button button-ghost" href="/logout">Log out</a>`
     : `<button class="button button-ghost" id="login-button" type="button">Log in</button>`;
 
   const authMeta = sessionUser
     ? `<div class="user-chip">
-        ${sessionUser.avatarUrl ? `<img src="${escapeHtml(sessionUser.avatarUrl)}" alt="" />` : ""}
+        ${
+          sessionUser.avatarUrl
+            ? `<img src="${escapeHtml(sessionUser.avatarUrl)}" alt="" onerror="this.onerror=null;this.src='${fallbackAvatar}'" />`
+            : `<img src="${fallbackAvatar}" alt="" />`
+        }
         <span>${escapeHtml(sessionUser.username)}</span>
       </div>`
     : "";
@@ -33,6 +38,7 @@ function renderLayout({
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0f172a" />
     <title>${escapeHtml(title)}</title>
+    <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" href="/images/blueprint-pfp2.png" />
     <link rel="apple-touch-icon" href="/images/blueprint-pfp2.png" />
     <link rel="stylesheet" href="/styles.css" />
