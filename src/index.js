@@ -161,6 +161,10 @@ app.post("/auth/link/discord/start", requireAuthJson, async (request, response, 
           normalizeReturnTo(request.body.returnTo),
         )}`,
       },
+      headers: {
+        Origin: config.baseUrl,
+        Referer: `${config.baseUrl}${normalizeReturnTo(request.body.returnTo)}`,
+      },
       method: "POST",
     });
 
@@ -427,8 +431,11 @@ function requireAuthJson(request, response, next) {
   next();
 }
 
-async function fetchAuthJson(endpoint, { accessToken, body, method = "GET" } = {}) {
-  const headers = {};
+async function fetchAuthJson(
+  endpoint,
+  { accessToken, body, headers: extraHeaders = {}, method = "GET" } = {},
+) {
+  const headers = { ...extraHeaders };
   if (accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
