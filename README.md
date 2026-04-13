@@ -65,6 +65,8 @@ npm start
 http://localhost:3000
 ```
 
+The dashboard's "Add bot to a server" link requests the `Administrator` permission by default.
+
 ## Required Environment Variables
 
 ```text

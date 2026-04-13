@@ -82,9 +82,7 @@ const client = new Client({
 
 const app = express();
 const invitePermissions = new PermissionsBitField([
-  PermissionsBitField.Flags.ViewChannel,
-  PermissionsBitField.Flags.SendMessages,
-  PermissionsBitField.Flags.ReadMessageHistory,
+  PermissionsBitField.Flags.Administrator,
 ]).bitfield.toString();
 const addBotUrl =
   `https://discord.com/oauth2/authorize?client_id=${config.clientId}` +
