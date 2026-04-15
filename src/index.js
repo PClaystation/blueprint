@@ -25,8 +25,10 @@ const {
   buildCountdownAlertMessage,
   clearCountdownSettings,
   DEFAULT_DAILY_ALERT_TIME,
+  getCurrentIsoDateInTimeZone,
   getCountdownResult,
   normalizeCountdownAlertTime,
+  normalizeCountdownAlertTimeZone,
   normalizeCountdownMode,
   normalizeExcludedDatesInput,
   normalizeIsoDateInput,
@@ -36,12 +38,14 @@ const {
 } = require("./countdown");
 const {
   assignAutoRole,
+  getAutoRoleState,
   getAutoRoleOptions,
   normalizeAutoRoleSettings,
   validateAutoRoleSettings,
 } = require("./modules/auto-role");
 const {
   getWelcomeChannelOptions,
+  getWelcomeState,
   normalizeWelcomeSettings,
   sendWelcomeMessage,
   validateWelcomeSettings,
@@ -227,16 +231,25 @@ app.get("/dashboard/:guildId", requireAuthPage, async (request, response, next) 
     }
 
     const dashboardOptions = await getGuildDashboardOptions(guild);
+    const settings = getGuildSettings(guild.id);
+    const pageMeta = buildGuildPageMeta({
+      botMember: dashboardOptions.botMember,
+      channelOptions: dashboardOptions.channelOptions,
+      guild,
+      roleOptions: dashboardOptions.roleOptions,
+      settings,
+    });
 
     response.send(
       renderGuildSettings({
         authConfig: getAuthClientConfig(),
         channelOptions: dashboardOptions.channelOptions,
         guild,
+        pageMeta,
         roleOptions: dashboardOptions.roleOptions,
         saveMessage: getSettingsSaveMessage(request.query.saved),
         sessionUser: response.locals.sessionUser,
-        settings: getGuildSettings(guild.id),
+        settings,
       }),
     );
   } catch (error) {
@@ -276,6 +289,9 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
         request.body.countdownAlertTime,
         DEFAULT_DAILY_ALERT_TIME,
       ),
+      countdownAlertTimeZone: normalizeCountdownAlertTimeZone(
+        request.body.countdownAlertTimeZone,
+      ),
       ...normalizeWelcomeSettings(request.body),
       ...normalizeAutoRoleSettings(request.body),
     };
@@ -285,6 +301,13 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       ...validateWelcomeSettings(settings, guild, botMember),
       ...validateAutoRoleSettings(settings, guild, botMember),
     ];
+    const pageMeta = buildGuildPageMeta({
+      botMember,
+      channelOptions: dashboardOptions.channelOptions,
+      guild,
+      roleOptions: dashboardOptions.roleOptions,
+      settings,
+    });
 
     if (validationErrors.length > 0) {
       response.status(400).send(
@@ -293,6 +316,7 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
           channelOptions: dashboardOptions.channelOptions,
           errorMessage: validationErrors[0],
           guild,
+          pageMeta,
           roleOptions: dashboardOptions.roleOptions,
           saveMessage: "",
           sessionUser: response.locals.sessionUser,
@@ -557,10 +581,18 @@ async function getManageableGuilds(discordUserId) {
           return null;
         }
 
+        const settings = getGuildSettings(guild.id);
+        const summary = buildGuildDashboardSummary(settings);
+
         return {
+          attentionCount: summary.attentionCount,
+          enabledCount: summary.enabledCount,
           iconUrl: guild.iconURL({ size: 128 }),
           id: guild.id,
           name: guild.name,
+          statusLabel: summary.statusLabel,
+          statusTone: summary.statusTone,
+          updatedAtLabel: summary.updatedAtLabel,
         };
       } catch (error) {
         if (
@@ -617,7 +649,8 @@ async function getGuildDashboardOptions(guild) {
   const botMember = await getBotGuildMember(guild);
 
   return {
-    channelOptions: getWelcomeChannelOptions(guild),
+    botMember,
+    channelOptions: getWelcomeChannelOptions(guild, botMember),
     roleOptions: getAutoRoleOptions(guild, botMember),
   };
 }
@@ -664,7 +697,13 @@ async function runCountdownAlertSweep() {
         }
 
         await channel.send(buildCountdownAlertMessage(settings, { now }));
-        setCountdownAlertLastSentOn(guild.id, now.toISOString().slice(0, 10));
+        setCountdownAlertLastSentOn(
+          guild.id,
+          getCurrentIsoDateInTimeZone(
+            now,
+            normalizeCountdownAlertTimeZone(settings.countdownAlertTimeZone),
+          ),
+        );
       } catch (error) {
         console.error(`Countdown alert failed for guild ${guild.id}.`);
         console.error(error);
@@ -729,6 +768,115 @@ function getSettingsSaveMessage(savedState) {
   }
 
   return savedState ? "Settings updated." : "";
+}
+
+function buildGuildDashboardSummary(settings) {
+  const countdown = getCountdownResult(settings);
+  const countdownAlert = getCountdownAlertSummary(settings);
+  const welcomeState = getWelcomeState(settings);
+  const autoRoleState = getAutoRoleState(settings);
+  const enabledCount = [settings.countdownEnabled, settings.welcomeEnabled, settings.autoRoleEnabled]
+    .filter(Boolean)
+    .length;
+  const attentionCount = [
+    settings.countdownEnabled &&
+      (countdown.state === "incomplete" ||
+        (settings.countdownAlertEnabled && countdownAlert.state === "incomplete")),
+    settings.welcomeEnabled && welcomeState === "incomplete",
+    settings.autoRoleEnabled && autoRoleState === "incomplete",
+  ].filter(Boolean).length;
+
+  return {
+    attentionCount,
+    enabledCount,
+    statusLabel:
+      attentionCount > 0 ? "Needs attention" : enabledCount > 0 ? "Ready" : "No modules enabled",
+    statusTone: attentionCount > 0 ? "incomplete" : enabledCount > 0 ? "live" : "disabled",
+    updatedAtLabel: formatUpdatedAtLabel(settings.updatedAt),
+  };
+}
+
+function buildGuildPageMeta({
+  botMember,
+  channelOptions,
+  guild,
+  roleOptions,
+  settings,
+}) {
+  const countdown = getCountdownResult(settings);
+  const countdownAlert = getCountdownAlertSummary(settings, channelOptions, countdown);
+  const countdownErrors = validateCountdownSettings(settings, guild, botMember);
+  const welcomeErrors = validateWelcomeSettings(settings, guild, botMember);
+  const autoRoleErrors = validateAutoRoleSettings(settings, guild, botMember);
+  const modules = [
+    {
+      enabled: settings.countdownEnabled,
+      key: "countdown",
+      blocker:
+        !settings.countdownEnabled
+          ? ""
+          : countdownErrors[0] ||
+            (countdown.state === "incomplete"
+              ? "Add an event name and target date to finish setup."
+              : ""),
+    },
+    {
+      enabled: settings.welcomeEnabled,
+      key: "welcome",
+      blocker:
+        !settings.welcomeEnabled
+          ? ""
+          : welcomeErrors[0] ||
+            (getWelcomeState(settings, channelOptions) === "incomplete"
+              ? "Choose a welcome channel and message to finish setup."
+              : ""),
+    },
+    {
+      enabled: settings.autoRoleEnabled,
+      key: "autoRole",
+      blocker:
+        !settings.autoRoleEnabled
+          ? ""
+          : autoRoleErrors[0] ||
+            (getAutoRoleState(settings, roleOptions) === "incomplete"
+              ? "Select a default role to finish setup."
+              : ""),
+    },
+  ];
+  const attentionModules = modules.filter((module) => module.enabled && module.blocker).length;
+  const enabledModules = modules.filter((module) => module.enabled).length;
+
+  return {
+    attentionModules,
+    countdownAlertState: countdownAlert.state,
+    enabledModules,
+    helloEnabled: settings.helloEnabled,
+    lastUpdatedLabel: formatUpdatedAtLabel(settings.updatedAt),
+    moduleBlockers: {
+      autoRole: modules.find((module) => module.key === "autoRole")?.blocker || "",
+      countdown: modules.find((module) => module.key === "countdown")?.blocker || "",
+      welcome: modules.find((module) => module.key === "welcome")?.blocker || "",
+    },
+  };
+}
+
+function formatUpdatedAtLabel(value) {
+  if (!value) {
+    return "Not saved yet";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Recently updated";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+  }).format(date) + " UTC";
 }
 
 function safeOriginFromUrl(value) {

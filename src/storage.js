@@ -4,9 +4,11 @@ const path = require("node:path");
 const Database = require("better-sqlite3");
 const {
   DEFAULT_DAILY_ALERT_TIME,
+  DEFAULT_DAILY_ALERT_TIME_ZONE,
   deserializeExcludedDates,
   deserializeWeekdays,
   normalizeCountdownAlertTime,
+  normalizeCountdownAlertTimeZone,
   serializeExcludedDates,
   serializeWeekdays,
 } = require("./countdown");
@@ -34,6 +36,7 @@ db.exec(`
     countdown_alert_enabled INTEGER NOT NULL DEFAULT 0,
     countdown_alert_channel_id TEXT NOT NULL DEFAULT '',
     countdown_alert_time TEXT NOT NULL DEFAULT '09:00',
+    countdown_alert_time_zone TEXT NOT NULL DEFAULT 'UTC',
     welcome_enabled INTEGER NOT NULL DEFAULT 0,
     welcome_channel_id TEXT NOT NULL DEFAULT '',
     welcome_message_template TEXT NOT NULL DEFAULT 'Welcome to {server}, {mention}.',
@@ -60,6 +63,10 @@ ensureColumn("countdown_excluded_dates", "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("countdown_alert_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("countdown_alert_channel_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("countdown_alert_time", `TEXT NOT NULL DEFAULT '${DEFAULT_DAILY_ALERT_TIME}'`);
+ensureColumn(
+  "countdown_alert_time_zone",
+  `TEXT NOT NULL DEFAULT '${DEFAULT_DAILY_ALERT_TIME_ZONE}'`,
+);
 ensureColumn("welcome_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("welcome_channel_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn(
@@ -83,6 +90,7 @@ const defaults = {
   countdownAlertEnabled: false,
   countdownAlertChannelId: "",
   countdownAlertTime: DEFAULT_DAILY_ALERT_TIME,
+  countdownAlertTimeZone: DEFAULT_DAILY_ALERT_TIME_ZONE,
   ...welcomeDefaults,
   ...autoRoleDefaults,
 };
@@ -111,6 +119,7 @@ function getGuildSettings(guildId) {
     countdownAlertEnabled: Boolean(row.countdown_alert_enabled),
     countdownAlertChannelId: row.countdown_alert_channel_id,
     countdownAlertTime: normalizeCountdownAlertTime(row.countdown_alert_time),
+    countdownAlertTimeZone: normalizeCountdownAlertTimeZone(row.countdown_alert_time_zone),
     welcomeEnabled: Boolean(row.welcome_enabled),
     welcomeChannelId: row.welcome_channel_id,
     welcomeMessageTemplate: row.welcome_message_template,
@@ -138,6 +147,7 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       countdown_alert_enabled,
       countdown_alert_channel_id,
       countdown_alert_time,
+      countdown_alert_time_zone,
       welcome_enabled,
       welcome_channel_id,
       welcome_message_template,
@@ -160,6 +170,7 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       countdown_alert_enabled = excluded.countdown_alert_enabled,
       countdown_alert_channel_id = excluded.countdown_alert_channel_id,
       countdown_alert_time = excluded.countdown_alert_time,
+      countdown_alert_time_zone = excluded.countdown_alert_time_zone,
       welcome_enabled = excluded.welcome_enabled,
       welcome_channel_id = excluded.welcome_channel_id,
       welcome_message_template = excluded.welcome_message_template,
@@ -182,6 +193,7 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
     settings.countdownAlertEnabled ? 1 : 0,
     settings.countdownAlertChannelId,
     normalizeCountdownAlertTime(settings.countdownAlertTime),
+    normalizeCountdownAlertTimeZone(settings.countdownAlertTimeZone),
     settings.welcomeEnabled ? 1 : 0,
     settings.welcomeChannelId,
     settings.welcomeMessageTemplate,

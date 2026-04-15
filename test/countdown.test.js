@@ -4,7 +4,9 @@ const assert = require("node:assert/strict");
 const {
   analyzeActiveDayCountdown,
   clearCountdownSettings,
+  getCountdownAlertSummary,
   getCountdownResult,
+  shouldSendCountdownAlert,
 } = require("../src/countdown");
 
 test("active-day analysis separates effective and ignored exclusions", () => {
@@ -104,7 +106,98 @@ test("clearing countdown settings preserves other modules", () => {
   assert.equal(cleared.countdownAlertEnabled, false);
   assert.equal(cleared.countdownAlertChannelId, "");
   assert.equal(cleared.countdownAlertTime, "09:00");
+  assert.equal(cleared.countdownAlertTimeZone, "UTC");
   assert.equal(cleared.autoRoleEnabled, true);
   assert.equal(cleared.helloEnabled, true);
   assert.equal(cleared.pingResponse, "Pong.");
+});
+
+test("active-day alerts only send on days that decrement the countdown", () => {
+  const settings = {
+    countdownAlertEnabled: true,
+    countdownAlertTime: "09:00",
+    countdownEnabled: true,
+    countdownExcludedDates: ["2026-04-15"],
+    countdownMode: "active-days",
+    countdownTargetDate: "2026-04-20",
+    countdownTitle: "Launch Day",
+    countdownWeekdays: [1, 2, 3, 4, 5],
+  };
+
+  assert.equal(
+    shouldSendCountdownAlert(settings, new Date("2026-04-14T09:30:00Z"), null),
+    true,
+  );
+  assert.equal(
+    shouldSendCountdownAlert(settings, new Date("2026-04-15T09:30:00Z"), null),
+    false,
+  );
+  assert.equal(
+    shouldSendCountdownAlert(settings, new Date("2026-04-18T09:30:00Z"), null),
+    false,
+  );
+});
+
+test("countdown alerts still send on the target day", () => {
+  const settings = {
+    countdownAlertEnabled: true,
+    countdownAlertTime: "09:00",
+    countdownEnabled: true,
+    countdownExcludedDates: [],
+    countdownMode: "active-days",
+    countdownTargetDate: "2026-04-20",
+    countdownTitle: "Launch Day",
+    countdownWeekdays: [1, 2, 3, 4, 5],
+  };
+
+  assert.equal(
+    shouldSendCountdownAlert(settings, new Date("2026-04-20T09:30:00Z"), null),
+    true,
+  );
+});
+
+test("countdown alert scheduling follows the configured local time zone", () => {
+  const settings = {
+    countdownAlertEnabled: true,
+    countdownAlertTime: "09:00",
+    countdownAlertTimeZone: "Europe/Stockholm",
+    countdownEnabled: true,
+    countdownExcludedDates: [],
+    countdownMode: "calendar",
+    countdownTargetDate: "2026-04-20",
+    countdownTitle: "Launch Day",
+    countdownWeekdays: [1, 2, 3, 4, 5],
+  };
+
+  assert.equal(
+    shouldSendCountdownAlert(settings, new Date("2026-04-14T06:30:00Z"), null),
+    false,
+  );
+  assert.equal(
+    shouldSendCountdownAlert(settings, new Date("2026-04-14T07:05:00Z"), null),
+    true,
+  );
+  assert.equal(
+    shouldSendCountdownAlert(settings, new Date("2026-04-14T07:05:00Z"), "2026-04-14"),
+    false,
+  );
+});
+
+test("countdown alert summary shows local and UTC time together", () => {
+  const summary = getCountdownAlertSummary(
+    {
+      countdownAlertChannelId: "123",
+      countdownAlertEnabled: true,
+      countdownAlertTime: "09:00",
+      countdownAlertTimeZone: "Europe/Stockholm",
+      countdownEnabled: true,
+      countdownTargetDate: "2026-04-20",
+      countdownTitle: "Launch Day",
+    },
+    [{ id: "123", label: "#announcements" }],
+  );
+
+  assert.equal(summary.channelLabel, "#announcements");
+  assert.match(summary.timeLabel, /^09:00 Europe\/Stockholm \/ \d{2}:\d{2} UTC$/);
+  assert.match(summary.timeHelpText, /Europe\/Stockholm/);
 });

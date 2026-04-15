@@ -1,6 +1,6 @@
 const { PermissionFlagsBits } = require("discord.js");
 
-const { escapeHtml, renderFeatureToggle } = require("../html");
+const { escapeHtml, renderModuleCard, renderModuleFacts } = require("../html");
 
 const defaults = {
   autoRoleEnabled: false,
@@ -53,7 +53,7 @@ function validateAutoRoleSettings(settings, guild, botMember) {
   return [];
 }
 
-function renderAutoRoleModuleCard({ roleOptions, settings }) {
+function renderAutoRoleModuleCard({ blockerText = "", roleOptions, settings }) {
   const state = getAutoRoleState(settings, roleOptions);
   const roleSelectOptions = [
     `<option value="">Select a role</option>`,
@@ -65,33 +65,24 @@ function renderAutoRoleModuleCard({ roleOptions, settings }) {
       </option>
     `),
   ].join("");
+  const statusHtml = `
+    <div class="status-pill status-pill-${state}" data-status-target="autoRole">${escapeHtml(getAutoRoleStatusLabel(state))}</div>
+  `;
+  const summaryHtml = renderModuleFacts([
+    {
+      label: "Default role",
+      valueHtml: escapeHtml(getRoleLabel(settings.autoRoleRoleId, roleOptions)),
+    },
+    {
+      label: "Applies to",
+      valueHtml: "New human members",
+    },
+  ]);
 
-  return `
-    <section class="settings-card">
-      <div class="card-header card-header-spread">
-        <div>
-          <p class="eyebrow">Auto role</p>
-          <h2>Join role assignment</h2>
-          <p class="card-copy">
-            Assign one default role to new human members as soon as they join the server.
-          </p>
-        </div>
-        <div class="status-pill status-pill-${state}">${escapeHtml(getAutoRoleStatusLabel(state))}</div>
-      </div>
-
+  return renderModuleCard({
+    bodyHtml: `
       <div class="module-layout">
         <div class="module-fields">
-          ${renderFeatureToggle({
-            checked: settings.autoRoleEnabled,
-            descriptionHtml:
-              "Decide whether Blueprint assigns a default join role at all. Turning this off fully stops automatic role grants for new members.",
-            disabledLabel: "Module off",
-            enabledLabel: "Module on",
-            inputName: "autoRoleEnabled",
-            kindLabel: "Module status",
-            titleHtml: "Automatic role assignment",
-          })}
-
           <div class="field-grid">
             <label>
               <span>Default role</span>
@@ -119,8 +110,20 @@ function renderAutoRoleModuleCard({ roleOptions, settings }) {
           <p class="preview-note">Bot accounts are skipped automatically.</p>
         </aside>
       </div>
-    </section>
-  `;
+    `,
+    checked: settings.autoRoleEnabled,
+    blockerHtml: escapeHtml(blockerText),
+    descriptionHtml:
+      "Assign one default role to new human members as soon as they join the server.",
+    eyebrow: "Auto role",
+    inputName: "autoRoleEnabled",
+    moduleKey: "autoRole",
+    moduleId: "auto-role",
+    statusHtml,
+    summaryHtml,
+    theme: "auto-role",
+    titleHtml: "Join role assignment",
+  });
 }
 
 async function assignAutoRole(member, settings) {
@@ -146,6 +149,8 @@ module.exports = {
   assignAutoRole,
   defaults,
   getAutoRoleOptions,
+  getAutoRoleState,
+  getAutoRoleStatusLabel,
   normalizeAutoRoleSettings,
   renderAutoRoleModuleCard,
   validateAutoRoleSettings,

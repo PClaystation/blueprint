@@ -1,6 +1,6 @@
 const { ChannelType, PermissionFlagsBits } = require("discord.js");
 
-const { escapeHtml, renderFeatureToggle } = require("../html");
+const { escapeHtml, renderModuleCard, renderModuleFacts } = require("../html");
 
 const defaults = {
   welcomeEnabled: false,
@@ -20,9 +20,9 @@ function normalizeWelcomeSettings(input = {}) {
   };
 }
 
-function getWelcomeChannelOptions(guild) {
+function getWelcomeChannelOptions(guild, botMember) {
   return guild.channels.cache
-    .filter((channel) => isWelcomeChannel(channel))
+    .filter((channel) => isWelcomeChannel(channel) && canSendWelcomeMessage(channel, botMember))
     .sort((left, right) => compareChannels(left, right))
     .map((channel) => ({
       id: channel.id,
@@ -60,7 +60,7 @@ function validateWelcomeSettings(settings, guild, botMember) {
   return [];
 }
 
-function renderWelcomeModuleCard({ channelOptions, guildName, settings }) {
+function renderWelcomeModuleCard({ blockerText = "", channelOptions, guildName, settings }) {
   const state = getWelcomeState(settings, channelOptions);
   const preview = buildWelcomePreview(settings, guildName, channelOptions, state);
   const channelSelectOptions = [
@@ -73,33 +73,24 @@ function renderWelcomeModuleCard({ channelOptions, guildName, settings }) {
       </option>
     `),
   ].join("");
+  const statusHtml = `
+    <div class="status-pill status-pill-${state}" data-status-target="welcome">${escapeHtml(getWelcomeStatusLabel(state))}</div>
+  `;
+  const summaryHtml = renderModuleFacts([
+    {
+      label: "Destination",
+      valueHtml: escapeHtml(preview.channelLabel),
+    },
+    {
+      label: "Audience",
+      valueHtml: "New human members",
+    },
+  ]);
 
-  return `
-    <section class="settings-card">
-      <div class="card-header card-header-spread">
-        <div>
-          <p class="eyebrow">Welcome</p>
-          <h2>New member greeting</h2>
-          <p class="card-copy">
-            Post a configurable welcome message in one channel whenever a human member joins.
-          </p>
-        </div>
-        <div class="status-pill status-pill-${state}">${escapeHtml(getWelcomeStatusLabel(state))}</div>
-      </div>
-
+  return renderModuleCard({
+    bodyHtml: `
       <div class="module-layout">
         <div class="module-fields">
-          ${renderFeatureToggle({
-            checked: settings.welcomeEnabled,
-            descriptionHtml:
-              "Control whether Blueprint actively greets new members in this server. Disabling it stops the welcome flow entirely.",
-            disabledLabel: "Module off",
-            enabledLabel: "Module on",
-            inputName: "welcomeEnabled",
-            kindLabel: "Module status",
-            titleHtml: "Welcome messages",
-          })}
-
           <div class="field-grid">
             <label>
               <span>Welcome channel</span>
@@ -137,8 +128,20 @@ function renderWelcomeModuleCard({ channelOptions, guildName, settings }) {
           <p class="preview-note">${escapeHtml(preview.note)}</p>
         </aside>
       </div>
-    </section>
-  `;
+    `,
+    checked: settings.welcomeEnabled,
+    blockerHtml: escapeHtml(blockerText),
+    descriptionHtml:
+      "Post a configurable welcome message in one channel whenever a human member joins.",
+    eyebrow: "Welcome",
+    inputName: "welcomeEnabled",
+    moduleKey: "welcome",
+    moduleId: "welcome",
+    statusHtml,
+    summaryHtml,
+    theme: "welcome",
+    titleHtml: "New member greeting",
+  });
 }
 
 async function sendWelcomeMessage(member, settings) {
@@ -170,6 +173,8 @@ async function sendWelcomeMessage(member, settings) {
 module.exports = {
   defaults,
   getWelcomeChannelOptions,
+  getWelcomeState,
+  getWelcomeStatusLabel,
   normalizeWelcomeSettings,
   renderWelcomeModuleCard,
   sendWelcomeMessage,
@@ -258,6 +263,19 @@ function isWelcomeChannel(channel) {
   return (
     channel &&
     (channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement)
+  );
+}
+
+function canSendWelcomeMessage(channel, botMember) {
+  if (!botMember) {
+    return true;
+  }
+
+  const permissions = channel.permissionsFor(botMember);
+  return (
+    permissions &&
+    permissions.has(PermissionFlagsBits.ViewChannel) &&
+    permissions.has(PermissionFlagsBits.SendMessages)
   );
 }
 

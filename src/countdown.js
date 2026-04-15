@@ -1,7 +1,28 @@
 const { ChannelType, PermissionFlagsBits } = require("discord.js");
 
 const DEFAULT_DAILY_ALERT_TIME = "09:00";
+const DEFAULT_DAILY_ALERT_TIME_ZONE = "UTC";
 const DEFAULT_WEEKDAYS = [1, 2, 3, 4, 5];
+const COMMON_DAILY_ALERT_TIME_ZONES = [
+  "UTC",
+  "Europe/Stockholm",
+  "Europe/London",
+  "Europe/Berlin",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "Asia/Tokyo",
+  "Australia/Sydney",
+];
+
+const SUPPORTED_DAILY_ALERT_TIME_ZONES = (
+  typeof Intl.supportedValuesOf === "function"
+    ? Intl.supportedValuesOf("timeZone")
+    : COMMON_DAILY_ALERT_TIME_ZONES
+).filter(Boolean);
+const supportedTimeZoneSet = new Set(SUPPORTED_DAILY_ALERT_TIME_ZONES);
+const zonedDateFormatterCache = new Map();
 
 const WEEKDAY_OPTIONS = [
   { value: 0, label: "Sunday", shortLabel: "Sun" },
@@ -51,6 +72,15 @@ function normalizeCountdownAlertTime(value, fallback = DEFAULT_DAILY_ALERT_TIME)
   return /^([01]\d|2[0-3]):([0-5]\d)$/.test(raw) ? raw : fallback;
 }
 
+function normalizeCountdownAlertTimeZone(value, fallback = DEFAULT_DAILY_ALERT_TIME_ZONE) {
+  const raw = String(value || "").trim();
+  if (isValidTimeZone(raw)) {
+    return raw;
+  }
+
+  return isValidTimeZone(fallback) ? fallback : DEFAULT_DAILY_ALERT_TIME_ZONE;
+}
+
 function normalizeExcludedDatesInput(value) {
   const tokens = String(value || "")
     .split(/[\s,]+/)
@@ -68,6 +98,7 @@ function clearCountdownSettings(settings = {}) {
     countdownAlertChannelId: "",
     countdownAlertEnabled: false,
     countdownAlertTime: DEFAULT_DAILY_ALERT_TIME,
+    countdownAlertTimeZone: DEFAULT_DAILY_ALERT_TIME_ZONE,
     countdownEnabled: false,
     countdownExcludedDates: [],
     countdownMode: "calendar",
@@ -127,6 +158,7 @@ function getCountdownResult(settings, options = {}) {
   const targetDate = normalizeIsoDateInput(settings.countdownTargetDate);
   const mode = normalizeCountdownMode(settings.countdownMode);
   const weekdays = normalizeWeekdaySelection(settings.countdownWeekdays);
+  const timeZone = normalizeCountdownAlertTimeZone(options.timeZone);
   const excludedDates = normalizeExcludedDatesInput(
     Array.isArray(settings.countdownExcludedDates)
       ? settings.countdownExcludedDates.join("\n")
@@ -169,7 +201,7 @@ function getCountdownResult(settings, options = {}) {
     };
   }
 
-  const today = startOfUtcDate(options.now || new Date());
+  const today = getStartOfCurrentDate(options.now || new Date(), timeZone);
   const target = parseIsoDate(targetDate);
   const targetDateLabel = formatDateLabel(targetDate);
   const differenceInDays = getDayDifference(today, target);
@@ -290,9 +322,15 @@ function getCountdownAlertStatusLabel(state) {
   return "Disabled";
 }
 
-function getCountdownAlertSummary(settings, channelOptions = [], countdown = getCountdownResult(settings)) {
+function getCountdownAlertSummary(
+  settings,
+  channelOptions = [],
+  countdown = getCountdownResult(settings, {
+    timeZone: normalizeCountdownAlertTimeZone(settings.countdownAlertTimeZone),
+  }),
+) {
   const state = getCountdownAlertState(settings, channelOptions);
-  const timeLabel = `${normalizeCountdownAlertTime(settings.countdownAlertTime)} UTC`;
+  const timing = getCountdownAlertTiming(settings);
   const channelLabel = getChannelLabel(settings.countdownAlertChannelId, channelOptions);
 
   return {
@@ -302,13 +340,16 @@ function getCountdownAlertSummary(settings, channelOptions = [], countdown = get
         ? "Pick a channel and time after the countdown itself is configured."
         : countdown.state === "past"
           ? "The event date has passed, so no further daily alerts will be sent."
-          : "Blueprint posts this once per day after the selected time until the event day arrives.",
+          : "Blueprint posts this once per day after the selected local time until the event day arrives.",
     preview:
       state === "live"
         ? buildCountdownAlertMessage(settings, { countdown })
         : "Daily alerts stay off until the countdown module is enabled and fully configured.",
     state,
-    timeLabel,
+    timeHelpText: timing.timeHelpText,
+    timeLabel: timing.timeLabel,
+    timeZone: timing.timeZone,
+    utcTimeLabel: timing.utcTimeLabel,
   };
 }
 
@@ -350,7 +391,16 @@ function validateCountdownSettings(settings, guild, botMember) {
   return [];
 }
 
-function buildCountdownAlertMessage(settings, { countdown = getCountdownResult(settings), now = new Date() } = {}) {
+function buildCountdownAlertMessage(
+  settings,
+  options = {},
+) {
+  const now = options.now || new Date();
+  const countdown = options.countdown || getCountdownResult(settings, {
+    now,
+    timeZone: normalizeCountdownAlertTimeZone(settings.countdownAlertTimeZone),
+  });
+
   if (countdown.state === "today") {
     return `${countdown.title} is happening today.\nTarget date: ${countdown.targetDateLabel}`;
   }
@@ -359,7 +409,10 @@ function buildCountdownAlertMessage(settings, { countdown = getCountdownResult(s
     return countdown.commandPreview;
   }
 
-  const isoDate = startOfUtcDate(now).toISOString().slice(0, 10);
+  const isoDate = getCurrentIsoDateInTimeZone(
+    now,
+    normalizeCountdownAlertTimeZone(settings.countdownAlertTimeZone),
+  );
   return [
     `Daily countdown alert for ${formatDateLabel(isoDate)}`,
     countdown.commandPreview,
@@ -371,26 +424,55 @@ function shouldSendCountdownAlert(settings, now, lastSentOn) {
     return false;
   }
 
-  const countdown = getCountdownResult(settings, { now });
+  const timeZone = normalizeCountdownAlertTimeZone(settings.countdownAlertTimeZone);
+  const countdown = getCountdownResult(settings, { now, timeZone });
   if (countdown.state !== "upcoming" && countdown.state !== "today") {
     return false;
   }
 
-  const today = startOfUtcDate(now).toISOString().slice(0, 10);
+  if (!isCountdownAlertDay(settings, countdown, now)) {
+    return false;
+  }
+
+  const today = getCurrentIsoDateInTimeZone(now, timeZone);
   if (lastSentOn === today) {
     return false;
   }
 
-  const [hours, minutes] = normalizeCountdownAlertTime(settings.countdownAlertTime).split(":");
-  const dueAt = Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-    Number.parseInt(hours, 10),
-    Number.parseInt(minutes, 10),
+  const dueAt = getUtcDateForTimeZoneLocalTime(
+    now,
+    timeZone,
+    normalizeCountdownAlertTime(settings.countdownAlertTime),
   );
 
-  return now.getTime() >= dueAt;
+  return dueAt ? now.getTime() >= dueAt.getTime() : false;
+}
+
+function isCountdownAlertDay(settings, countdown, now) {
+  const timeZone = normalizeCountdownAlertTimeZone(settings.countdownAlertTimeZone);
+  if (countdown.state === "today") {
+    return true;
+  }
+
+  if (normalizeCountdownMode(settings.countdownMode) !== "active-days") {
+    return true;
+  }
+
+  const isoDate = getCurrentIsoDateInTimeZone(now, timeZone);
+  const excludedDates = new Set(
+    normalizeExcludedDatesInput(
+      Array.isArray(settings.countdownExcludedDates)
+        ? settings.countdownExcludedDates.join("\n")
+        : settings.countdownExcludedDates,
+    ),
+  );
+
+  if (excludedDates.has(isoDate)) {
+    return false;
+  }
+
+  const allowedWeekdays = new Set(normalizeWeekdaySelection(settings.countdownWeekdays));
+  return allowedWeekdays.has(getIsoDateWeekday(isoDate));
 }
 
 function buildScheduleLine(mode, weekdays, activeDayBreakdown, enteredExcludedCount = 0) {
@@ -438,6 +520,23 @@ function parseIsoDate(value) {
   return parsed.toISOString().slice(0, 10) === value ? parsed : null;
 }
 
+function isValidTimeZone(value) {
+  if (!value) {
+    return false;
+  }
+
+  if (supportedTimeZoneSet.has(value)) {
+    return true;
+  }
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function formatDateLabel(value) {
   const parsed = typeof value === "string" ? parseIsoDate(value) : value;
   return parsed ? dateFormatter.format(parsed) : "";
@@ -449,12 +548,46 @@ function startOfUtcDate(value) {
   );
 }
 
+function getStartOfCurrentDate(value, timeZone = DEFAULT_DAILY_ALERT_TIME_ZONE) {
+  if (!timeZone || timeZone === "UTC") {
+    return startOfUtcDate(value);
+  }
+
+  const isoDate = getCurrentIsoDateInTimeZone(value, timeZone);
+  return parseIsoDate(isoDate) || startOfUtcDate(value);
+}
+
 function getDayDifference(start, end) {
   return Math.round((end.getTime() - start.getTime()) / 86400000);
 }
 
 function addDays(date, amount) {
   return new Date(date.getTime() + amount * 86400000);
+}
+
+function getCountdownAlertTiming(settings, now = new Date()) {
+  const timeZone = normalizeCountdownAlertTimeZone(settings.countdownAlertTimeZone);
+  const localTimeLabel = normalizeCountdownAlertTime(settings.countdownAlertTime);
+  const dueAtUtc = getUtcDateForTimeZoneLocalTime(now, timeZone, localTimeLabel);
+  const utcTimeLabel = dueAtUtc
+    ? formatTimeLabel(dueAtUtc.getUTCHours(), dueAtUtc.getUTCMinutes())
+    : localTimeLabel;
+  const timeLabel =
+    timeZone === "UTC"
+      ? `${utcTimeLabel} UTC`
+      : `${localTimeLabel} ${timeZone} / ${utcTimeLabel} UTC`;
+  const timeHelpText =
+    timeZone === "UTC"
+      ? `Posts daily at ${utcTimeLabel} UTC.`
+      : `Posts daily at ${localTimeLabel} ${timeZone}, which is ${utcTimeLabel} UTC right now.`;
+
+  return {
+    localTimeLabel,
+    timeHelpText,
+    timeLabel,
+    timeZone,
+    utcTimeLabel,
+  };
 }
 
 function analyzeActiveDayCountdown(today, target, weekdays, excludedDates) {
@@ -525,6 +658,92 @@ function buildIgnoredExclusionsLine(mode, activeDayBreakdown) {
   return `Ignored excluded dates: ${summarizedDates}${suffix}`;
 }
 
+function getCurrentIsoDateInTimeZone(value, timeZone) {
+  const parts = getZonedDateParts(value, normalizeCountdownAlertTimeZone(timeZone));
+  return `${parts.year}-${padNumber(parts.month)}-${padNumber(parts.day)}`;
+}
+
+function getUtcDateForTimeZoneLocalTime(referenceDate, timeZone, timeLabel) {
+  const [hours, minutes] = normalizeCountdownAlertTime(timeLabel).split(":");
+  const parts = getZonedDateParts(referenceDate, timeZone);
+  const desiredAsUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    Number.parseInt(hours, 10),
+    Number.parseInt(minutes, 10),
+  );
+
+  let guess = new Date(desiredAsUtc);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const guessParts = getZonedDateParts(guess, timeZone);
+    const actualAsUtc = Date.UTC(
+      guessParts.year,
+      guessParts.month - 1,
+      guessParts.day,
+      guessParts.hour,
+      guessParts.minute,
+    );
+    const delta = desiredAsUtc - actualAsUtc;
+    if (delta === 0) {
+      break;
+    }
+
+    guess = new Date(guess.getTime() + delta);
+  }
+
+  return guess;
+}
+
+function getIsoDateWeekday(isoDate) {
+  return parseIsoDate(isoDate)?.getUTCDay() ?? -1;
+}
+
+function getZonedDateFormatter(timeZone) {
+  if (!zonedDateFormatterCache.has(timeZone)) {
+    zonedDateFormatterCache.set(
+      timeZone,
+      new Intl.DateTimeFormat("en-CA", {
+        day: "2-digit",
+        hour: "2-digit",
+        hourCycle: "h23",
+        minute: "2-digit",
+        month: "2-digit",
+        timeZone,
+        year: "numeric",
+      }),
+    );
+  }
+
+  return zonedDateFormatterCache.get(timeZone);
+}
+
+function getZonedDateParts(value, timeZone) {
+  const formatted = getZonedDateFormatter(timeZone).formatToParts(value);
+  const mapped = Object.fromEntries(
+    formatted
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return {
+    day: Number.parseInt(mapped.day, 10),
+    hour: Number.parseInt(mapped.hour, 10),
+    minute: Number.parseInt(mapped.minute, 10),
+    month: Number.parseInt(mapped.month, 10),
+    year: Number.parseInt(mapped.year, 10),
+  };
+}
+
+function formatTimeLabel(hours, minutes) {
+  return `${padNumber(hours)}:${padNumber(minutes)}`;
+}
+
+function padNumber(value) {
+  return String(value).padStart(2, "0");
+}
+
 function getIgnoredExclusionReason(isoDate, today, target, allowedWeekdays) {
   const excludedDate = parseIsoDate(isoDate);
   if (!excludedDate) {
@@ -550,7 +769,10 @@ module.exports = {
   analyzeActiveDayCountdown,
   clearCountdownSettings,
   DEFAULT_DAILY_ALERT_TIME,
+  DEFAULT_DAILY_ALERT_TIME_ZONE,
   DEFAULT_WEEKDAYS,
+  COMMON_DAILY_ALERT_TIME_ZONES,
+  SUPPORTED_DAILY_ALERT_TIME_ZONES,
   WEEKDAY_OPTIONS,
   buildCountdownAlertMessage,
   deserializeExcludedDates,
@@ -562,7 +784,10 @@ module.exports = {
   getCountdownAlertStatusLabel,
   getCountdownAlertSummary,
   getCountdownResult,
+  getCurrentIsoDateInTimeZone,
+  isCountdownAlertDay,
   normalizeCountdownAlertTime,
+  normalizeCountdownAlertTimeZone,
   normalizeCountdownMode,
   normalizeExcludedDatesInput,
   normalizeIsoDateInput,
