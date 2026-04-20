@@ -15,7 +15,12 @@ const {
   renderModuleCard,
   renderModuleFacts,
 } = require("./html");
+const { renderAnnouncementModuleCard } = require("./modules/announcements");
+const { renderAuditLogModuleCard } = require("./modules/audit-log");
+const { renderAutoModerationModuleCard } = require("./modules/auto-moderation");
 const { renderAutoRoleModuleCard } = require("./modules/auto-role");
+const { renderJoinScreeningModuleCard } = require("./modules/join-screening");
+const { renderSuggestionModuleCard } = require("./modules/suggestions");
 const { renderWelcomeModuleCard } = require("./modules/welcome");
 
 function renderLayout({
@@ -53,6 +58,7 @@ function renderLayout({
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
     <div class="page-shell">
       <header class="topbar">
         <div class="topbar-branding">
@@ -93,17 +99,34 @@ function renderHome({ authConfig, sessionUser }) {
     : `<button class="button" id="login-button" type="button">Sign in with Continental ID</button>`;
 
   const body = `
-    <main class="hero">
+    <main class="hero home-page" id="main-content">
       <section class="hero-copy">
-        <p class="eyebrow">Shared bot control center</p>
-        <h1>Use Continental ID, then manage servers through the Discord account linked to it.</h1>
+        <p class="eyebrow">Dashboard-first Discord control center</p>
+        <h1>Run Blueprint from one polished server dashboard.</h1>
         <p class="lede">
-          This app signs users in with the Dashboard auth system, reads the Discord account
-          linked to that identity, and lets moderators configure the bot only in servers where
-          the bot is installed and that linked Discord account has management rights.
+          Enable modules, fix setup gaps, and manage welcome flows, countdowns, moderation,
+          announcements, and community tools without burying staff inside long slash commands.
         </p>
         <div class="hero-actions">
           ${primaryAction}
+          <a class="button button-ghost" href="/dashboard">View installed servers</a>
+        </div>
+        <div class="hero-metrics">
+          <article class="hero-metric">
+            <span class="hero-metric-label">Built for</span>
+            <strong class="hero-metric-value">Modular server control</strong>
+            <p class="hero-metric-copy">Turn modules on only where they belong and keep every server configurable.</p>
+          </article>
+          <article class="hero-metric">
+            <span class="hero-metric-label">Primary workflow</span>
+            <strong class="hero-metric-value">Dashboard first</strong>
+            <p class="hero-metric-copy">Use slash commands for quick actions while major setup stays visual and centralized.</p>
+          </article>
+          <article class="hero-metric">
+            <span class="hero-metric-label">Operator focus</span>
+            <strong class="hero-metric-value">Fast setup triage</strong>
+            <p class="hero-metric-copy">Spot unfinished modules quickly, jump into a server, and continue setup without guesswork.</p>
+          </article>
         </div>
       </section>
       <section class="panel brand-panel">
@@ -122,13 +145,25 @@ function renderHome({ authConfig, sessionUser }) {
           Blueprint is Continental’s dashboard-first Discord control center: modular,
           polished, and designed to stay out of the way until you need it.
         </p>
-        <h2>How access works</h2>
-        <ul class="feature-list">
-          <li>Login uses Continental ID, not a separate site account</li>
-          <li>The linked Discord identity decides which installed servers you can manage</li>
-          <li>Server settings stay centralized in SQLite for the shared bot</li>
-          <li>The bot reads those settings immediately for slash commands</li>
-        </ul>
+        <div class="info-card-grid">
+          <section class="info-card">
+            <h2>What you can manage</h2>
+            <ul class="feature-list">
+              <li>Welcome flows and join roles</li>
+              <li>Shared countdowns and daily alerts</li>
+              <li>Audit feeds and moderation rules</li>
+              <li>Announcements, suggestions, and screening</li>
+            </ul>
+          </section>
+          <section class="info-card">
+            <h2>How access works</h2>
+            <ol class="feature-list feature-list-ordered">
+              <li>Sign in with Continental ID</li>
+              <li>Use the Discord account linked to that identity</li>
+              <li>Manage only the servers where Blueprint is installed and you have rights</li>
+            </ol>
+          </section>
+        </div>
       </section>
     </main>
   `;
@@ -148,8 +183,22 @@ function renderDashboard({
   guilds,
   sessionUser,
 }) {
-  const attentionServers = guilds.filter((guild) => guild.attentionCount > 0).length;
-  const cards = guilds
+  const sortedGuilds = [...guilds].sort((left, right) => {
+    const leftNeedsSetup = left.attentionCount > 0 ? 1 : 0;
+    const rightNeedsSetup = right.attentionCount > 0 ? 1 : 0;
+    if (rightNeedsSetup !== leftNeedsSetup) {
+      return rightNeedsSetup - leftNeedsSetup;
+    }
+
+    if (right.attentionCount !== left.attentionCount) {
+      return right.attentionCount - left.attentionCount;
+    }
+
+    return left.name.localeCompare(right.name);
+  });
+  const attentionServers = sortedGuilds.filter((guild) => guild.attentionCount > 0).length;
+  const readyServers = sortedGuilds.filter((guild) => guild.enabledCount > 0 && guild.attentionCount === 0).length;
+  const cards = sortedGuilds
     .map((guild) => {
       const icon = guild.iconUrl
         ? `<img class="server-avatar-image" src="${escapeHtml(guild.iconUrl)}" alt="" />`
@@ -165,12 +214,29 @@ function renderDashboard({
         },
       ]);
 
+      const href = `/dashboard/${guild.id}`;
+      const actionLabel = guild.attentionCount > 0 ? "Continue setup" : "Open dashboard";
+      const setupHeadline = guild.attentionCount > 0
+        ? `${guild.attentionCount} module${guild.attentionCount === 1 ? "" : "s"} still need setup`
+        : guild.enabledCount > 0
+          ? "Configured and ready to use"
+          : "No modules enabled yet";
+      const setupCopy = guild.attentionCount > 0
+        ? "Jump back in and finish the missing pieces first."
+        : guild.enabledCount > 0
+          ? "Review settings, refine modules, or add more features."
+          : "Open this server and start enabling modules from the dashboard.";
+
       return `
         <article
           class="server-card ${guild.attentionCount > 0 ? "server-card-alert" : ""}"
           data-guild-card
           data-guild-attention="${guild.attentionCount > 0 ? "true" : "false"}"
+          data-card-link="${href}"
           data-guild-name="${escapeHtml(guild.name.toLowerCase())}"
+          role="link"
+          tabindex="0"
+          aria-label="${escapeHtml(`${actionLabel} for ${guild.name}`)}"
         >
           <div class="server-card-meta-row">
             <span class="status-pill status-pill-${escapeHtml(guild.statusTone)}">
@@ -180,13 +246,20 @@ function renderDashboard({
           </div>
           <div class="server-card-head">
             <div class="server-avatar">${icon}</div>
-            <div>
+            <div class="server-card-head-copy">
               <h2>${escapeHtml(guild.name)}</h2>
               <p>Installed and manageable by your linked Discord account</p>
             </div>
           </div>
           ${summaryHtml}
-          <a class="button" href="/dashboard/${guild.id}">Manage</a>
+          <div class="server-card-progress">
+            <strong>${escapeHtml(setupHeadline)}</strong>
+            <p>${escapeHtml(setupCopy)}</p>
+          </div>
+          <div class="server-card-actions">
+            <span class="server-card-action-label">${guild.attentionCount > 0 ? "Prioritized first" : "Ready when you are"}</span>
+            <a class="button" href="${href}">${actionLabel}</a>
+          </div>
         </article>
       `;
     })
@@ -212,13 +285,33 @@ function renderDashboard({
     : "Link your Discord account to load manageable servers.";
 
   const body = `
-    <main class="dashboard-page">
+    <main class="dashboard-page" id="main-content">
       <section class="section-header">
         <div>
           <p class="eyebrow">Installed servers</p>
           <h1>Choose a server</h1>
+          <p class="section-copy">
+            Servers with unfinished modules are surfaced first so you can pick up setup work
+            without hunting for it.
+          </p>
         </div>
-        <a class="button button-ghost" href="${addBotUrl}">Add bot to a server</a>
+        <div class="section-actions">
+          <a class="button button-ghost" href="${addBotUrl}">Add bot to a server</a>
+        </div>
+      </section>
+      <section class="settings-card dashboard-spotlight ${guilds.length ? "" : "is-hidden"}">
+        <div class="dashboard-spotlight-copy">
+          <p class="eyebrow">Setup overview</p>
+          <h2>Start with the servers that still need attention.</h2>
+          <p class="card-copy">
+            Blueprint sorts unfinished servers to the top and keeps the rest ready for routine edits.
+          </p>
+        </div>
+        <div class="dashboard-spotlight-stats">
+          <span class="dashboard-summary-pill">${guilds.length} installed</span>
+          <span class="dashboard-summary-pill">${attentionServers} need setup</span>
+          <span class="dashboard-summary-pill">${readyServers} ready</span>
+        </div>
       </section>
       <section class="dashboard-toolbar ${guilds.length ? "" : "is-hidden"}">
         <label class="search-field">
@@ -263,6 +356,7 @@ function renderGuildSettings({
   channelOptions,
   errorMessage,
   guild,
+  mentionRoleOptions,
   pageMeta,
   roleOptions,
   saveMessage,
@@ -271,6 +365,9 @@ function renderGuildSettings({
 }) {
   const countdown = getCountdownResult(settings);
   const countdownAlert = getCountdownAlertSummary(settings, channelOptions);
+  const moduleIndexHtml = renderModuleIndex(pageMeta?.modules || []);
+  const firstBlockedModule = (pageMeta?.modules || []).find((module) => module.blocker);
+  const firstBlockedModuleId = firstBlockedModule ? getModuleSectionId(firstBlockedModule.key) : "";
   const selectedWeekdays = new Set(settings.countdownWeekdays || []);
   const hasSavedCountdown = Boolean(
     settings.countdownEnabled ||
@@ -335,35 +432,45 @@ function renderGuildSettings({
       </option>
     `),
   ].join("");
-  const validationItems = [
-    pageMeta?.moduleBlockers?.countdown
-      ? `<li><strong>Countdown:</strong> ${escapeHtml(pageMeta.moduleBlockers.countdown)}</li>`
-      : "",
-    pageMeta?.moduleBlockers?.welcome
-      ? `<li><strong>Welcome:</strong> ${escapeHtml(pageMeta.moduleBlockers.welcome)}</li>`
-      : "",
-    pageMeta?.moduleBlockers?.autoRole
-      ? `<li><strong>Auto role:</strong> ${escapeHtml(pageMeta.moduleBlockers.autoRole)}</li>`
-      : "",
-  ]
-    .filter(Boolean)
+  const validationItems = (pageMeta?.modules || [])
+    .filter((module) => module.blocker)
+    .map(
+      (module) => `
+        <li>
+          <a
+            class="validation-link"
+            href="#${getModuleSectionId(module.key)}"
+            data-jump-module="${getModuleSectionId(module.key)}"
+          >
+            ${escapeHtml(module.label)}
+          </a>
+          <span>${escapeHtml(module.blocker)}</span>
+        </li>
+      `,
+    )
     .join("");
 
   const body = `
-    <main class="settings-page">
+    <main class="settings-page" id="main-content">
       <section class="section-header">
         <div>
           <p class="eyebrow">Server settings</p>
           <h1>${escapeHtml(guild.name)}</h1>
+          <p class="section-copy">
+            Jump between modules, resolve blockers quickly, and keep every change scoped to this
+            server only.
+          </p>
         </div>
-        <a class="button button-ghost" href="/dashboard">Back</a>
+        <div class="section-actions">
+          <a class="button button-ghost" href="/dashboard">Back</a>
+        </div>
       </section>
 
       <section class="overview-grid">
         <article class="overview-card">
           <span class="overview-label">Enabled modules</span>
           <strong class="overview-value" data-overview-enabled>${escapeHtml(String(pageMeta?.enabledModules || 0))}</strong>
-          <p class="overview-copy">Countdown, welcome, and auto role are counted here.</p>
+          <p class="overview-copy">Every enabled dashboard module is counted here.</p>
         </article>
         <article class="overview-card ${pageMeta?.attentionModules ? "overview-card-alert" : ""}">
           <span class="overview-label">Needs setup</span>
@@ -382,17 +489,84 @@ function renderGuildSettings({
         </article>
       </section>
 
-      ${saveMessage ? `<div class="notice">${escapeHtml(saveMessage)}</div>` : ""}
-      ${errorMessage ? `<div class="notice notice-error">${escapeHtml(errorMessage)}</div>` : ""}
-      <section class="notice notice-warning ${validationItems ? "" : "is-hidden"}" data-validation-summary>
-        <strong>Modules needing attention</strong>
+      <section class="settings-card module-index-card">
+        <div class="card-header card-header-spread">
+          <div>
+            <p class="eyebrow">Module map</p>
+            <h2>Jump straight to the work that matters.</h2>
+            <p class="card-copy">
+              Every module stays independently configurable, with its current state surfaced here first.
+            </p>
+          </div>
+          ${
+            firstBlockedModuleId
+              ? `
+                <button
+                  class="button button-ghost"
+                  type="button"
+                  data-review-issues
+                >
+                  Review first issue
+                </button>
+              `
+              : ""
+          }
+        </div>
+        <div class="module-index-grid">
+          ${moduleIndexHtml}
+        </div>
+      </section>
+
+      ${
+        saveMessage
+          ? `
+            <div class="notice notice-success" tabindex="-1" role="status" data-flash-notice>
+              <strong>Saved for ${escapeHtml(guild.name)}</strong>
+              <p>${escapeHtml(saveMessage)}</p>
+            </div>
+          `
+          : ""
+      }
+      ${
+        errorMessage
+          ? `
+            <div class="notice notice-error" tabindex="-1" role="alert" data-flash-notice>
+              <strong>Could not save changes</strong>
+              <p>${escapeHtml(errorMessage)}</p>
+            </div>
+          `
+          : ""
+      }
+      <section
+        class="notice notice-warning ${validationItems ? "" : "is-hidden"}"
+        data-validation-summary
+        tabindex="-1"
+        aria-live="polite"
+      >
+        <div class="notice-head">
+          <strong>Modules needing attention</strong>
+          ${
+            firstBlockedModuleId
+              ? `
+                <div class="notice-actions">
+                  <button class="button button-ghost" type="button" data-review-issues>
+                    Jump to first issue
+                  </button>
+                  <button class="button button-ghost" type="button" data-expand-issues>
+                    Expand blocked modules
+                  </button>
+                </div>
+              `
+              : ""
+          }
+        </div>
         <ul class="validation-list" data-validation-list>
           ${validationItems}
         </ul>
       </section>
 
       <form class="settings-stack" method="post" action="/dashboard/${guild.id}" data-settings-form>
-        <section class="settings-card">
+        <section class="settings-card" data-settings-scope="core">
           <div class="card-header">
             <div>
               <p class="eyebrow">Core commands</p>
@@ -451,161 +625,196 @@ function renderGuildSettings({
           bodyHtml: `
             <div class="countdown-layout">
               <div class="countdown-fields">
-                <div class="field-grid">
-                  <label>
-                    <span>Event name</span>
-                    <input
-                      name="countdownTitle"
-                      maxlength="80"
-                      placeholder="Summer break, launch day, finals week..."
-                      value="${escapeHtml(settings.countdownTitle)}"
-                    />
-                  </label>
-
-                  <label>
-                    <span>Target date</span>
-                    <input
-                      type="date"
-                      name="countdownTargetDate"
-                      value="${escapeHtml(settings.countdownTargetDate)}"
-                    />
-                  </label>
-
-                  <label>
-                    <span>Counting mode</span>
-                    <select name="countdownMode" data-countdown-mode>
-                      <option value="calendar" ${settings.countdownMode === "calendar" ? "selected" : ""}>
-                        Calendar days
-                      </option>
-                      <option value="active-days" ${settings.countdownMode === "active-days" ? "selected" : ""}>
-                        Selected weekdays only
-                      </option>
-                    </select>
-                    <small data-countdown-mode-copy>
-                      ${escapeHtml(getCountdownModeCopy(settings.countdownMode))}
-                    </small>
-                  </label>
-                </div>
-
-                <div
-                  class="countdown-schedule-fields ${settings.countdownMode === "active-days" ? "" : "is-hidden"}"
-                  data-countdown-schedule-fields
-                >
-                  <div class="subsection">
-                    <span class="subsection-label">Count these weekdays</span>
-                    <div class="weekday-grid">
-                      ${weekdayCheckboxes}
+                <div class="subsection subsection-card">
+                  <div class="card-header">
+                    <div>
+                      <span class="subsection-label">Countdown basics</span>
+                      <p class="card-copy">
+                        Set the event name, target date, and how Blueprint should count down to it.
+                      </p>
                     </div>
                   </div>
+                  <div class="field-grid">
+                    <label>
+                      <span>Event name</span>
+                      <input
+                        name="countdownTitle"
+                        maxlength="80"
+                        placeholder="Summer break, launch day, finals week..."
+                        value="${escapeHtml(settings.countdownTitle)}"
+                      />
+                    </label>
 
-                  <div class="subsection">
-                    <div class="card-header">
+                    <label>
+                      <span>Target date</span>
+                      <input
+                        type="date"
+                        name="countdownTargetDate"
+                        value="${escapeHtml(settings.countdownTargetDate)}"
+                      />
+                    </label>
+
+                    <label>
+                      <span>Counting mode</span>
+                      <select name="countdownMode" data-countdown-mode>
+                        <option value="calendar" ${settings.countdownMode === "calendar" ? "selected" : ""}>
+                          Calendar days
+                        </option>
+                        <option value="active-days" ${settings.countdownMode === "active-days" ? "selected" : ""}>
+                          Selected weekdays only
+                        </option>
+                      </select>
+                      <small data-countdown-mode-copy>
+                        ${escapeHtml(getCountdownModeCopy(settings.countdownMode))}
+                      </small>
+                    </label>
+                  </div>
+                </div>
+
+                <details
+                  class="config-disclosure"
+                  data-countdown-schedule-panel
+                  ${settings.countdownMode === "active-days" || countdown.excludedDates.length ? "open" : ""}
+                >
+                  <summary>Scheduling rules and excluded dates</summary>
+                  <div class="config-disclosure-body">
+                    <p class="config-disclosure-copy">
+                      Use this when the countdown should only include selected weekdays or skip holidays and other off-days.
+                    </p>
+                    <div
+                      class="countdown-schedule-fields ${settings.countdownMode === "active-days" ? "" : "is-hidden"}"
+                      data-countdown-schedule-fields
+                    >
+                      <div class="subsection">
+                        <span class="subsection-label">Count these weekdays</span>
+                        <div class="weekday-grid">
+                          ${weekdayCheckboxes}
+                        </div>
+                      </div>
+
+                      <div class="subsection">
+                        <div class="card-header">
+                          <div>
+                            <span class="subsection-label">Excluded dates</span>
+                            <p class="card-copy">
+                              Remove holidays, breaks, and other off-days from selected weekday countdowns.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div class="excluded-dates-panel">
+                          <input
+                            type="hidden"
+                            name="countdownExcludedDates"
+                            value="${escapeHtml(countdown.excludedDates.join(","))}"
+                            data-excluded-dates-hidden
+                          />
+
+                          <div class="excluded-dates-input-row">
+                            <label class="excluded-date-picker">
+                              <span>Add excluded date</span>
+                              <input type="date" data-excluded-date-input />
+                            </label>
+                            <button
+                              class="button button-ghost button-small"
+                              type="button"
+                              data-excluded-date-add
+                            >
+                              Add date
+                            </button>
+                          </div>
+
+                          <div
+                            class="excluded-date-chip-list ${excludedDateChips ? "" : "is-hidden"}"
+                            data-excluded-date-list
+                          >
+                            ${excludedDateChips}
+                          </div>
+
+                          <p
+                            class="preview-note ${excludedDateChips ? "is-hidden" : ""}"
+                            data-excluded-date-empty
+                          >
+                            No excluded dates selected yet.
+                          </p>
+
+                          <small>
+                            Excluded dates only reduce the countdown when they fall on a selected weekday
+                            after today and before the target date.
+                          </small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <details
+                  class="config-disclosure"
+                  data-countdown-alert-panel
+                  ${
+                    settings.countdownAlertEnabled ||
+                    settings.countdownAlertChannelId ||
+                    settings.countdownAlertTimeZone !== DEFAULT_DAILY_ALERT_TIME_ZONE
+                      ? "open"
+                      : ""
+                  }
+                >
+                  <summary>Daily alert delivery</summary>
+                  <div class="config-disclosure-body">
+                    <div class="card-header card-header-spread subsection-header">
                       <div>
-                        <span class="subsection-label">Excluded dates</span>
+                        <span class="subsection-label">Daily alerts</span>
                         <p class="card-copy">
-                          Remove holidays, breaks, and other off-days from selected weekday countdowns.
+                          Post one countdown update per day in a chosen channel at a local server time.
                         </p>
                       </div>
-                    </div>
-
-                    <div class="excluded-dates-panel">
-                      <input
-                        type="hidden"
-                        name="countdownExcludedDates"
-                        value="${escapeHtml(countdown.excludedDates.join(","))}"
-                        data-excluded-dates-hidden
-                      />
-
-                      <div class="excluded-dates-input-row">
-                        <label class="excluded-date-picker">
-                          <span>Add excluded date</span>
-                          <input type="date" data-excluded-date-input />
-                        </label>
-                        <button
-                          class="button button-ghost button-small"
-                          type="button"
-                          data-excluded-date-add
-                        >
-                          Add date
-                        </button>
+                      <div class="${countdownAlertStatusClass}" data-countdown-alert-status>
+                        ${escapeHtml(getCountdownAlertStatusLabel(countdownAlert.state))}
                       </div>
+                    </div>
 
-                      <div
-                        class="excluded-date-chip-list ${excludedDateChips ? "" : "is-hidden"}"
-                        data-excluded-date-list
-                      >
-                        ${excludedDateChips}
-                      </div>
+                    ${renderFeatureToggle({
+                      checked: settings.countdownAlertEnabled,
+                      descriptionHtml:
+                        "Enable one daily countdown post for this server. Blueprint sends it once per day after the chosen time until the target date arrives.",
+                      disabledLabel: "Alerts off",
+                      enabledLabel: "Alerts on",
+                      inputName: "countdownAlertEnabled",
+                      kindLabel: "Delivery",
+                      titleHtml: "Daily countdown alerts",
+                    })}
 
-                      <p
-                        class="preview-note ${excludedDateChips ? "is-hidden" : ""}"
-                        data-excluded-date-empty
-                      >
-                        No excluded dates selected yet.
-                      </p>
+                    <div
+                      class="field-grid countdown-alert-fields ${settings.countdownAlertEnabled ? "" : "is-hidden"}"
+                      data-countdown-alert-fields
+                    >
+                      <label>
+                        <span>Alert channel</span>
+                        <select name="countdownAlertChannelId">
+                          ${countdownChannelOptions}
+                        </select>
+                      </label>
 
-                      <small>
-                        Excluded dates only reduce the countdown when they fall on a selected weekday
-                        after today and before the target date.
-                      </small>
+                      <label>
+                        <span>Alert time zone</span>
+                        <select name="countdownAlertTimeZone">
+                          ${countdownAlertTimeZoneOptions}
+                        </select>
+                        <small>Schedule alerts in the server's local time zone.</small>
+                      </label>
+
+                      <label>
+                        <span>Send time</span>
+                        <input
+                          type="time"
+                          name="countdownAlertTime"
+                          value="${escapeHtml(settings.countdownAlertTime)}"
+                        />
+                        <small data-countdown-alert-time-copy>${escapeHtml(countdownAlert.timeHelpText)}</small>
+                      </label>
                     </div>
                   </div>
-                </div>
-
-                <div class="subsection">
-                  <div class="card-header card-header-spread subsection-header">
-                    <div>
-                      <span class="subsection-label">Daily alerts</span>
-                      <p class="card-copy">
-                        Post one countdown update per day in a chosen channel at a local server time.
-                      </p>
-                    </div>
-                    <div class="${countdownAlertStatusClass}" data-countdown-alert-status>
-                      ${escapeHtml(getCountdownAlertStatusLabel(countdownAlert.state))}
-                    </div>
-                  </div>
-
-                  ${renderFeatureToggle({
-                    checked: settings.countdownAlertEnabled,
-                    descriptionHtml:
-                      "Enable one daily countdown post for this server. Blueprint sends it once per day after the chosen time until the target date arrives.",
-                    disabledLabel: "Alerts off",
-                    enabledLabel: "Alerts on",
-                    inputName: "countdownAlertEnabled",
-                    kindLabel: "Delivery",
-                    titleHtml: "Daily countdown alerts",
-                  })}
-
-                  <div
-                    class="field-grid countdown-alert-fields ${settings.countdownAlertEnabled ? "" : "is-hidden"}"
-                    data-countdown-alert-fields
-                  >
-                    <label>
-                      <span>Alert channel</span>
-                      <select name="countdownAlertChannelId">
-                        ${countdownChannelOptions}
-                      </select>
-                    </label>
-
-                    <label>
-                      <span>Alert time zone</span>
-                      <select name="countdownAlertTimeZone">
-                        ${countdownAlertTimeZoneOptions}
-                      </select>
-                      <small>Schedule alerts in the server's local time zone.</small>
-                    </label>
-
-                    <label>
-                      <span>Send time</span>
-                      <input
-                        type="time"
-                        name="countdownAlertTime"
-                        value="${escapeHtml(settings.countdownAlertTime)}"
-                      />
-                      <small data-countdown-alert-time-copy>${escapeHtml(countdownAlert.timeHelpText)}</small>
-                    </label>
-                  </div>
-                </div>
+                </details>
 
                 <div class="subsection danger-zone">
                   <div class="card-header">
@@ -692,6 +901,7 @@ function renderGuildSettings({
           `,
           checked: settings.countdownEnabled,
           blockerHtml: escapeHtml(pageMeta?.moduleBlockers?.countdown || ""),
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.countdown),
           descriptionHtml:
             "Configure one shared countdown that anyone in the server can check with <code>/countdown</code>.",
           eyebrow: "Countdown",
@@ -714,13 +924,52 @@ function renderGuildSettings({
         ${renderWelcomeModuleCard({
           blockerText: pageMeta?.moduleBlockers?.welcome || "",
           channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.welcome),
           guildName: guild.name,
           settings,
         })}
 
         ${renderAutoRoleModuleCard({
           blockerText: pageMeta?.moduleBlockers?.autoRole || "",
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.autoRole),
           roleOptions,
+          settings,
+        })}
+
+        ${renderAuditLogModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.auditLog || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.auditLog),
+          settings,
+        })}
+
+        ${renderAutoModerationModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.autoModeration || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.autoModeration),
+          settings,
+        })}
+
+        ${renderJoinScreeningModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.joinScreening || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.joinScreening),
+          roleOptions,
+          settings,
+        })}
+
+        ${renderAnnouncementModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.announcements || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.announcements),
+          mentionRoleOptions,
+          settings,
+        })}
+
+        ${renderSuggestionModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.suggestions || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.suggestions),
           settings,
         })}
 
@@ -732,6 +981,13 @@ function renderGuildSettings({
             </p>
           </div>
           <div class="save-bar-actions">
+            <button
+              class="button button-ghost ${firstBlockedModuleId ? "" : "is-hidden"}"
+              type="button"
+              data-review-issues
+            >
+              Review issues
+            </button>
             <button class="button button-ghost" type="reset" data-discard-button>Discard</button>
             <button class="button" type="submit" data-save-button>Save settings</button>
           </div>
@@ -781,6 +1037,17 @@ module.exports = {
   renderDashboard,
   renderGuildSettings,
   renderHome,
+};
+
+const MODULE_SECTION_IDS = {
+  announcements: "module-announcements",
+  auditLog: "module-audit-log",
+  autoModeration: "module-auto-moderation",
+  autoRole: "module-auto-role",
+  countdown: "module-countdown",
+  joinScreening: "module-join-screening",
+  suggestions: "module-suggestions",
+  welcome: "module-welcome",
 };
 
 function getCountdownStatusLabel(state) {
@@ -861,4 +1128,84 @@ function renderCountdownAlertTimeZoneOption(timeZone, selectedTimeZone) {
 
 function formatExcludedDateChipLabel(isoDate) {
   return formatDateLabel(isoDate) || isoDate;
+}
+
+function renderModuleIndex(modules = []) {
+  return modules
+    .map((module) => `
+      <a
+        class="module-index-item module-index-item-${escapeHtml(module.state)} ${module.blocker ? "is-alert" : ""}"
+        href="#${getModuleSectionId(module.key)}"
+        data-jump-module="${getModuleSectionId(module.key)}"
+        data-module-nav="${escapeHtml(module.key)}"
+      >
+        <span class="module-index-top">
+          <span class="module-index-name">${escapeHtml(module.label)}</span>
+          <span
+            class="status-pill status-pill-${escapeHtml(module.state)}"
+            data-module-nav-pill="${escapeHtml(module.key)}"
+          >
+            ${escapeHtml(getModuleDisplayStateLabel(module.state))}
+          </span>
+        </span>
+        <span class="module-index-summary" data-module-nav-summary="${escapeHtml(module.key)}">
+          ${escapeHtml(getModuleNavigationSummary(module))}
+        </span>
+        <span class="module-index-meta" data-module-nav-meta="${escapeHtml(module.key)}">
+          ${escapeHtml(module.enabled ? "Enabled module" : "Disabled module")}
+        </span>
+      </a>
+    `)
+    .join("");
+}
+
+function getModuleSectionId(moduleKey) {
+  return MODULE_SECTION_IDS[moduleKey] || `module-${toKebabCase(moduleKey)}`;
+}
+
+function getModuleDisplayStateLabel(state) {
+  if (state === "live") {
+    return "Live";
+  }
+
+  if (state === "today") {
+    return "Today";
+  }
+
+  if (state === "ended") {
+    return "Ended";
+  }
+
+  if (state === "incomplete") {
+    return "Needs setup";
+  }
+
+  return "Disabled";
+}
+
+function getModuleNavigationSummary(module) {
+  if (!module.enabled) {
+    return "Currently off. Enable it when this server is ready to use it.";
+  }
+
+  if (module.blocker) {
+    return module.blocker;
+  }
+
+  if (module.state === "today") {
+    return "Configured and currently active today.";
+  }
+
+  if (module.state === "ended") {
+    return "Configured, but the current setup has already finished.";
+  }
+
+  return "Configured and ready for this server.";
+}
+
+function toKebabCase(value) {
+  return String(value || "")
+    .replaceAll(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replaceAll(/[^a-zA-Z0-9]+/g, "-")
+    .toLowerCase();
 }

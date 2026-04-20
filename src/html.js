@@ -65,14 +65,18 @@ function renderModuleCard({
 }) {
   const safeModuleId = escapeHtml(moduleId);
   const panelId = `module-panel-${safeModuleId}`;
+  const sectionId = `module-${safeModuleId}`;
 
   return `
     <section
+      id="${sectionId}"
       class="settings-card module-card module-card-${escapeHtml(theme)} ${defaultOpen ? "is-open" : ""}"
       data-module-card
       data-module-id="${safeModuleId}"
       data-module-default-open="${defaultOpen ? "true" : "false"}"
       data-module-key="${escapeHtml(moduleKey)}"
+      data-settings-scope="${escapeHtml(moduleKey)}"
+      tabindex="-1"
     >
       <div class="module-card-header">
         <button
@@ -158,6 +162,7 @@ function renderModuleToggle({
         ${checked ? "checked" : ""}
       />
       <span class="module-toggle-copy">
+        <span class="module-toggle-eyebrow">Enable module</span>
         <span class="module-toggle-state module-toggle-state-enabled">${escapeHtml(enabledLabel)}</span>
         <span class="module-toggle-state module-toggle-state-disabled">${escapeHtml(disabledLabel)}</span>
       </span>

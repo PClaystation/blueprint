@@ -23,6 +23,97 @@
     return `blueprint:module-card-state:${window.location.pathname}`;
   }
 
+  function getGuildSearchStorageKey() {
+    return `blueprint:guild-search:${window.location.pathname}`;
+  }
+
+  function toKebabCase(value) {
+    return String(value || "")
+      .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .toLowerCase();
+  }
+
+  function getModuleSectionId(moduleKey) {
+    return `module-${toKebabCase(moduleKey)}`;
+  }
+
+  function loadModuleCardStates() {
+    try {
+      return JSON.parse(window.localStorage.getItem(getModuleStateStorageKey()) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function persistModuleCardStates(states) {
+    try {
+      window.localStorage.setItem(getModuleStateStorageKey(), JSON.stringify(states));
+    } catch {
+      // Ignore storage failures so the collapse UI still works without persistence.
+    }
+  }
+
+  function syncModuleCard(card, open) {
+    const button = card.querySelector("[data-module-trigger]");
+    const panel = card.querySelector("[data-module-panel]");
+    if (!button || !panel) {
+      return;
+    }
+
+    card.classList.toggle("is-open", open);
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    panel.setAttribute("aria-hidden", open ? "false" : "true");
+    panel.inert = !open;
+  }
+
+  function setModuleCardOpen(card, open, persist = true) {
+    if (!card) {
+      return;
+    }
+
+    syncModuleCard(card, open);
+    if (!persist) {
+      return;
+    }
+
+    const moduleId = safeText(card.getAttribute("data-module-id"));
+    if (!moduleId) {
+      return;
+    }
+
+    const states = loadModuleCardStates();
+    states[moduleId] = open;
+    persistModuleCardStates(states);
+  }
+
+  function openModuleCardById(sectionId, options = {}) {
+    const target = document.getElementById(sectionId);
+    if (!target) {
+      return;
+    }
+
+    const card = target.closest("[data-module-card]") || target;
+    setModuleCardOpen(card, true);
+
+    if (options.updateHash !== false) {
+      const nextHash = `#${sectionId}`;
+      if (window.location.hash !== nextHash) {
+        window.history.replaceState(null, "", nextHash);
+      }
+    }
+
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (options.focus !== false) {
+        const focusTarget = card.querySelector("[data-module-trigger]") || target;
+        if (focusTarget && typeof focusTarget.focus === "function") {
+          focusTarget.focus({ preventScroll: true });
+        }
+      }
+    });
+  }
+
   function buildAuthCompleteUrl(returnTo) {
     const url = new URL(config.authCompleteUrl || `${window.location.origin}/auth/complete`);
     url.searchParams.set("returnTo", returnTo || "/dashboard");
@@ -164,9 +255,11 @@
   function bindCountdownControls() {
     const modeSelect = document.querySelector("[data-countdown-mode]");
     const scheduleFields = document.querySelector("[data-countdown-schedule-fields]");
+    const schedulePanel = document.querySelector("[data-countdown-schedule-panel]");
     const modeCopy = document.querySelector("[data-countdown-mode-copy]");
     const alertToggle = document.querySelector("input[name='countdownAlertEnabled']");
     const alertFields = document.querySelector("[data-countdown-alert-fields]");
+    const alertPanel = document.querySelector("[data-countdown-alert-panel]");
 
     if (!modeSelect || !scheduleFields || !modeCopy) {
       return;
@@ -182,6 +275,9 @@
       const mode = safeText(modeSelect.value) || "calendar";
       scheduleFields.classList.toggle("is-hidden", mode !== "active-days");
       modeCopy.textContent = modeDescriptions[mode] || modeDescriptions.calendar;
+      if (mode === "active-days" && schedulePanel) {
+        schedulePanel.open = true;
+      }
     }
 
     modeSelect.addEventListener("change", syncCountdownMode);
@@ -190,6 +286,9 @@
     if (alertToggle && alertFields) {
       function syncCountdownAlerts() {
         alertFields.classList.toggle("is-hidden", !alertToggle.checked);
+        if (alertToggle.checked && alertPanel) {
+          alertPanel.open = true;
+        }
       }
 
       alertToggle.addEventListener("change", syncCountdownAlerts);
@@ -205,6 +304,18 @@
 
     if (!searchInput || cards.length === 0) {
       return;
+    }
+
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(getGuildSearchStorageKey()) || "{}");
+      if (typeof saved.query === "string") {
+        searchInput.value = saved.query;
+      }
+      if (attentionToggle && typeof saved.attentionOnly === "boolean") {
+        attentionToggle.checked = saved.attentionOnly;
+      }
+    } catch {
+      // Ignore malformed storage and fall back to the default toolbar state.
     }
 
     function syncVisibleCards() {
@@ -228,6 +339,18 @@
       if (emptyState) {
         emptyState.classList.toggle("is-hidden", visibleCount > 0);
       }
+
+      try {
+        window.localStorage.setItem(
+          getGuildSearchStorageKey(),
+          JSON.stringify({
+            attentionOnly,
+            query: searchInput.value,
+          }),
+        );
+      } catch {
+        // Ignore storage failures so search still works in-memory.
+      }
     }
 
     searchInput.addEventListener("input", syncVisibleCards);
@@ -237,39 +360,47 @@
     syncVisibleCards();
   }
 
+  function bindClickableCards() {
+    document.querySelectorAll("[data-card-link]").forEach((card) => {
+      const href = safeText(card.getAttribute("data-card-link"));
+      if (!href) {
+        return;
+      }
+
+      function followCardLink() {
+        window.location.href = href;
+      }
+
+      card.addEventListener("click", (event) => {
+        if (event.target.closest("a, button, input, select, textarea, label")) {
+          return;
+        }
+
+        followCardLink();
+      });
+
+      card.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+
+        if (event.target.closest("a, button, input, select, textarea")) {
+          return;
+        }
+
+        event.preventDefault();
+        followCardLink();
+      });
+    });
+  }
+
   function bindModuleCards() {
     const cards = Array.from(document.querySelectorAll("[data-module-card]"));
     if (cards.length === 0) {
       return;
     }
 
-    let savedStates = {};
-    try {
-      savedStates = JSON.parse(window.localStorage.getItem(getModuleStateStorageKey()) || "{}");
-    } catch {
-      savedStates = {};
-    }
-
-    function persistStates() {
-      try {
-        window.localStorage.setItem(getModuleStateStorageKey(), JSON.stringify(savedStates));
-      } catch {
-        // Ignore storage failures so the collapse UI still works without persistence.
-      }
-    }
-
-    function syncCard(card, open) {
-      const button = card.querySelector("[data-module-trigger]");
-      const panel = card.querySelector("[data-module-panel]");
-      if (!button || !panel) {
-        return;
-      }
-
-      card.classList.toggle("is-open", open);
-      button.setAttribute("aria-expanded", open ? "true" : "false");
-      panel.setAttribute("aria-hidden", open ? "false" : "true");
-      panel.inert = !open;
-    }
+    const savedStates = loadModuleCardStates();
 
     cards.forEach((card) => {
       const moduleId = safeText(card.getAttribute("data-module-id"));
@@ -281,14 +412,44 @@
 
       const initialOpen =
         typeof savedStates[moduleId] === "boolean" ? savedStates[moduleId] : defaultOpen;
-      syncCard(card, initialOpen);
+      setModuleCardOpen(card, initialOpen, false);
 
       button.addEventListener("click", () => {
         const nextOpen = !card.classList.contains("is-open");
-        savedStates[moduleId] = nextOpen;
-        syncCard(card, nextOpen);
-        persistStates();
+        setModuleCardOpen(card, nextOpen);
       });
+    });
+
+    if (window.location.hash.startsWith("#module-")) {
+      openModuleCardById(window.location.hash.slice(1), { focus: false, updateHash: false });
+    }
+  }
+
+  function bindModuleJumpLinks() {
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest("[data-jump-module]");
+      if (!link) {
+        return;
+      }
+
+      const sectionId = safeText(link.getAttribute("data-jump-module"));
+      if (!sectionId) {
+        return;
+      }
+
+      event.preventDefault();
+      openModuleCardById(sectionId);
+    });
+  }
+
+  function focusFlashNotice() {
+    const notice = document.querySelector("[data-flash-notice]");
+    if (!notice || typeof notice.focus !== "function") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      notice.focus({ preventScroll: false });
     });
   }
 
@@ -327,8 +488,35 @@
     const excludedDateAddButton = form.querySelector("[data-excluded-date-add]");
     const excludedDateList = form.querySelector("[data-excluded-date-list]");
     const excludedDateEmpty = form.querySelector("[data-excluded-date-empty]");
+    const reviewIssueButtons = Array.from(document.querySelectorAll("[data-review-issues]"));
+    const expandIssueButtons = Array.from(document.querySelectorAll("[data-expand-issues]"));
 
+    const moduleLabels = {
+      announcements: "Announcements",
+      auditLog: "Audit log",
+      autoModeration: "Automod",
+      autoRole: "Auto role",
+      countdown: "Countdown",
+      joinScreening: "Join screening",
+      suggestions: "Suggestions",
+      welcome: "Welcome",
+    };
     const statusLabels = {
+      announcements: {
+        disabled: "Disabled",
+        incomplete: "Needs setup",
+        live: "Live",
+      },
+      auditLog: {
+        disabled: "Disabled",
+        incomplete: "Needs setup",
+        live: "Live",
+      },
+      autoModeration: {
+        disabled: "Disabled",
+        incomplete: "Needs setup",
+        live: "Live",
+      },
       autoRole: {
         disabled: "Disabled",
         incomplete: "Needs setup",
@@ -341,6 +529,16 @@
         live: "Live",
         today: "Today",
       },
+      joinScreening: {
+        disabled: "Disabled",
+        incomplete: "Needs setup",
+        live: "Live",
+      },
+      suggestions: {
+        disabled: "Disabled",
+        incomplete: "Needs setup",
+        live: "Live",
+      },
       welcome: {
         disabled: "Disabled",
         incomplete: "Needs setup",
@@ -348,6 +546,7 @@
       },
     };
     let initialSnapshot = serializeForm(form);
+    let initialFieldState = getFieldStateSnapshot();
     let isDirty = false;
 
     function getField(name) {
@@ -379,6 +578,75 @@
 
       const value = safeText(field.value);
       return value ? [value] : [];
+    }
+
+    function getFieldEntries(name) {
+      const field = getField(name);
+      if (!field) {
+        return [];
+      }
+
+      if (typeof field.length === "number" && typeof field.item === "function") {
+        return Array.from(field)
+          .filter((item) => {
+            if (!item) {
+              return false;
+            }
+
+            if (item.type === "checkbox" || item.type === "radio") {
+              return item.checked;
+            }
+
+            return true;
+          })
+          .map((item) => String(item.value ?? ""))
+          .sort();
+      }
+
+      if (field.type === "checkbox" || field.type === "radio") {
+        return field.checked ? [String(field.value ?? "on")] : [];
+      }
+
+      return [String(field.value ?? "")];
+    }
+
+    function getFieldStateSnapshot() {
+      const names = Array.from(form.elements)
+        .map((field) => safeText(field && field.name))
+        .filter(Boolean);
+      const uniqueNames = Array.from(new Set(names)).sort();
+
+      return Object.fromEntries(
+        uniqueNames.map((name) => [name, getFieldEntries(name).join("\u0000")]),
+      );
+    }
+
+    function getChangedFieldNames(currentFieldState) {
+      const keys = Array.from(
+        new Set([
+          ...Object.keys(initialFieldState),
+          ...Object.keys(currentFieldState),
+        ]),
+      ).sort();
+
+      return keys.filter((key) => (initialFieldState[key] || "") !== (currentFieldState[key] || ""));
+    }
+
+    function countChangedScopes(changedFieldNames) {
+      const scopes = new Set();
+
+      changedFieldNames.forEach((name) => {
+        form.querySelectorAll(`[name="${name}"]`).forEach((field) => {
+          const scope = safeText(
+            field.closest("[data-settings-scope]")?.getAttribute("data-settings-scope"),
+          );
+          if (scope) {
+            scopes.add(scope);
+          }
+        });
+      });
+
+      return scopes.size;
     }
 
     function getSelectedOptionLabel(name, fallback) {
@@ -458,13 +726,58 @@
       );
       const welcomeEnabled = isChecked("welcomeEnabled");
       const autoRoleEnabled = isChecked("autoRoleEnabled");
+      const auditLogEnabled = isChecked("auditLogEnabled");
+      const autoModerationEnabled = isChecked("autoModerationEnabled");
+      const joinScreeningEnabled = isChecked("joinScreeningEnabled");
+      const announcementsEnabled = isChecked("announcementsEnabled");
+      const suggestionsEnabled = isChecked("suggestionsEnabled");
       const welcomeChannelId = getValue("welcomeChannelId");
       const welcomeMessage = getValue("welcomeMessageTemplate");
       const autoRoleRoleId = getValue("autoRoleRoleId");
+      const auditLogChannelId = getValue("auditLogChannelId");
+      const auditLogEvents = [
+        isChecked("auditLogMemberJoinEnabled"),
+        isChecked("auditLogMemberLeaveEnabled"),
+        isChecked("auditLogMessageDeleteEnabled"),
+        isChecked("auditLogRoleChangeEnabled"),
+      ].filter(Boolean).length;
+      const autoModerationBlockedWords = safeText(getValue("autoModerationBlockedWords"));
+      const autoModerationMentionLimit = Number.parseInt(getValue("autoModerationMentionLimit"), 10) || 0;
+      const autoModerationBlockInvites = isChecked("autoModerationBlockInvites");
+      const joinScreeningAlertChannelId = getValue("joinScreeningAlertChannelId");
+      const joinScreeningAction = getValue("joinScreeningAction") || "flag";
+      const joinScreeningQuarantineRoleId = getValue("joinScreeningQuarantineRoleId");
+      const announcementsChannelId = getValue("announcementsChannelId");
+      const suggestionsChannelId = getValue("suggestionsChannelId");
       const modules = {
+        announcements: {
+          blocker: "",
+          enabled: announcementsEnabled,
+          state: "disabled",
+        },
+        auditLog: {
+          blocker: "",
+          enabled: auditLogEnabled,
+          state: "disabled",
+        },
+        autoModeration: {
+          blocker: "",
+          enabled: autoModerationEnabled,
+          state: "disabled",
+        },
         countdown: {
           blocker: "",
           enabled: countdownData.enabled,
+          state: "disabled",
+        },
+        joinScreening: {
+          blocker: "",
+          enabled: joinScreeningEnabled,
+          state: "disabled",
+        },
+        suggestions: {
+          blocker: "",
+          enabled: suggestionsEnabled,
           state: "disabled",
         },
         welcome: {
@@ -509,6 +822,54 @@
         }
       }
 
+      if (auditLogEnabled) {
+        modules.auditLog.state = "live";
+        if (!auditLogChannelId) {
+          modules.auditLog.blocker = "Choose an audit log channel to finish setup.";
+          modules.auditLog.state = "incomplete";
+        } else if (auditLogEvents === 0) {
+          modules.auditLog.blocker = "Choose at least one tracked audit event.";
+          modules.auditLog.state = "incomplete";
+        }
+      }
+
+      if (autoModerationEnabled) {
+        modules.autoModeration.state = "live";
+        const hasAutomodRule =
+          autoModerationBlockInvites || autoModerationMentionLimit > 0 || Boolean(autoModerationBlockedWords);
+        if (!hasAutomodRule) {
+          modules.autoModeration.blocker = "Turn on at least one automod rule to finish setup.";
+          modules.autoModeration.state = "incomplete";
+        }
+      }
+
+      if (joinScreeningEnabled) {
+        modules.joinScreening.state = "live";
+        if (!joinScreeningAlertChannelId) {
+          modules.joinScreening.blocker = "Choose an alert channel to finish setup.";
+          modules.joinScreening.state = "incomplete";
+        } else if (joinScreeningAction === "quarantine" && !joinScreeningQuarantineRoleId) {
+          modules.joinScreening.blocker = "Select a quarantine role to finish setup.";
+          modules.joinScreening.state = "incomplete";
+        }
+      }
+
+      if (announcementsEnabled) {
+        modules.announcements.state = "live";
+        if (!announcementsChannelId) {
+          modules.announcements.blocker = "Choose an announcement channel to finish setup.";
+          modules.announcements.state = "incomplete";
+        }
+      }
+
+      if (suggestionsEnabled) {
+        modules.suggestions.state = "live";
+        if (!suggestionsChannelId) {
+          modules.suggestions.blocker = "Choose a suggestions channel to finish setup.";
+          modules.suggestions.state = "incomplete";
+        }
+      }
+
       const enabledModules = Object.values(modules).filter((module) => module.enabled).length;
       const attentionModules = Object.values(modules).filter(
         (module) => module.enabled && module.state === "incomplete",
@@ -534,21 +895,73 @@
       target.textContent = statusLabels[key][state];
     }
 
+    function getModuleNavigationSummary(module) {
+      if (!module.enabled) {
+        return "Currently off. Enable it when this server is ready to use it.";
+      }
+
+      if (module.blocker) {
+        return module.blocker;
+      }
+
+      if (module.state === "today") {
+        return "Configured and currently active today.";
+      }
+
+      if (module.state === "ended") {
+        return "Configured, but the current setup has already finished.";
+      }
+
+      return "Configured and ready for this server.";
+    }
+
+    function syncModuleNavigationCard(key, module) {
+      const navCard = document.querySelector(`[data-module-nav="${key}"]`);
+      if (navCard) {
+        navCard.className = `module-index-item module-index-item-${module.state} ${module.blocker ? "is-alert" : ""}`;
+      }
+
+      const navPill = document.querySelector(`[data-module-nav-pill="${key}"]`);
+      if (navPill) {
+        navPill.className = `status-pill status-pill-${module.state}`;
+        navPill.textContent = statusLabels[key][module.state];
+      }
+
+      const navSummary = document.querySelector(`[data-module-nav-summary="${key}"]`);
+      if (navSummary) {
+        navSummary.textContent = getModuleNavigationSummary(module);
+      }
+
+      const navMeta = document.querySelector(`[data-module-nav-meta="${key}"]`);
+      if (navMeta) {
+        navMeta.textContent = module.enabled ? "Enabled module" : "Disabled module";
+      }
+    }
+
+    function getFirstBlockedModuleKey(moduleState) {
+      return Object.entries(moduleState.modules)
+        .find(([, module]) => module.blocker)?.[0] || "";
+    }
+
     function syncValidationSummary(moduleState) {
       if (!validationSummary || !validationList) {
         return;
       }
 
-      const items = [];
-      if (moduleState.modules.countdown.blocker) {
-        items.push(`<li><strong>Countdown:</strong> ${escapeHtml(moduleState.modules.countdown.blocker)}</li>`);
-      }
-      if (moduleState.modules.welcome.blocker) {
-        items.push(`<li><strong>Welcome:</strong> ${escapeHtml(moduleState.modules.welcome.blocker)}</li>`);
-      }
-      if (moduleState.modules.autoRole.blocker) {
-        items.push(`<li><strong>Auto role:</strong> ${escapeHtml(moduleState.modules.autoRole.blocker)}</li>`);
-      }
+      const items = Object.entries(moduleState.modules)
+        .filter(([, module]) => module.blocker)
+        .map(([key, module]) => `
+          <li>
+            <a
+              class="validation-link"
+              href="#${escapeHtml(getModuleSectionId(key))}"
+              data-jump-module="${escapeHtml(getModuleSectionId(key))}"
+            >
+              ${escapeHtml(moduleLabels[key] || key)}
+            </a>
+            <span>${escapeHtml(module.blocker)}</span>
+          </li>
+        `);
 
       validationList.innerHTML = items.join("");
       validationSummary.classList.toggle("is-hidden", items.length === 0);
@@ -563,6 +976,7 @@
         }
 
         syncStatusPill(key, module.state);
+        syncModuleNavigationCard(key, module);
       });
 
       if (overviewEnabled) {
@@ -576,6 +990,12 @@
       }
 
       syncValidationSummary(moduleState);
+      reviewIssueButtons.forEach((button) => {
+        button.classList.toggle("is-hidden", moduleState.attentionModules === 0);
+      });
+      expandIssueButtons.forEach((button) => {
+        button.classList.toggle("is-hidden", moduleState.attentionModules === 0);
+      });
     }
 
     function syncCountdownPreview(previewState) {
@@ -627,11 +1047,17 @@
 
     function syncSaveBar() {
       const snapshot = serializeForm(form);
+      const currentFieldState = getFieldStateSnapshot();
+      const changedFieldNames = getChangedFieldNames(currentFieldState);
+      const changedFieldCount = changedFieldNames.length;
+      const changedScopeCount = countChangedScopes(changedFieldNames);
+      const effectiveScopeCount = changedScopeCount || 1;
       const dashboardState = getDashboardState();
       isDirty = snapshot !== initialSnapshot;
 
       if (saveBar) {
         saveBar.classList.toggle("is-dirty", isDirty);
+        saveBar.classList.toggle("has-issues", dashboardState.attentionModules > 0);
       }
 
       if (saveButton) {
@@ -643,14 +1069,18 @@
       }
 
       if (saveTitle) {
-        saveTitle.textContent = isDirty ? "Unsaved changes" : "All changes saved";
+        if (isDirty && dashboardState.attentionModules > 0) {
+          saveTitle.textContent = "Unsaved changes with blockers";
+        } else {
+          saveTitle.textContent = isDirty ? "Unsaved changes" : "All changes saved";
+        }
       }
 
       if (saveStatus) {
         if (isDirty && dashboardState.attentionModules > 0) {
-          saveStatus.textContent = `${dashboardState.attentionModules} enabled module${dashboardState.attentionModules === 1 ? "" : "s"} still need setup before save.`;
+          saveStatus.textContent = `${changedFieldCount} field${changedFieldCount === 1 ? "" : "s"} changed across ${effectiveScopeCount} area${effectiveScopeCount === 1 ? "" : "s"}. ${dashboardState.attentionModules} enabled module${dashboardState.attentionModules === 1 ? "" : "s"} still need setup before save.`;
         } else if (isDirty) {
-          saveStatus.textContent = "Review and save when you are ready. These changes only affect this server.";
+          saveStatus.textContent = `${changedFieldCount} field${changedFieldCount === 1 ? "" : "s"} changed across ${effectiveScopeCount} area${effectiveScopeCount === 1 ? "" : "s"}. Save when you are ready; these changes only affect this server.`;
         } else {
           saveStatus.textContent = "Changes only apply to this server after you save them.";
         }
@@ -690,6 +1120,36 @@
         setExcludedDates(getExcludedDates().filter((date) => date !== isoDate));
       });
     }
+
+    reviewIssueButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const firstBlockedKey = getFirstBlockedModuleKey(getDashboardState());
+        if (!firstBlockedKey) {
+          return;
+        }
+
+        openModuleCardById(getModuleSectionId(firstBlockedKey));
+      });
+    });
+
+    expandIssueButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const moduleState = getDashboardState();
+        Object.entries(moduleState.modules)
+          .filter(([, module]) => module.blocker)
+          .forEach(([key]) => {
+            const card = document.getElementById(getModuleSectionId(key));
+            if (card) {
+              setModuleCardOpen(card, true);
+            }
+          });
+
+        const firstBlockedKey = getFirstBlockedModuleKey(moduleState);
+        if (firstBlockedKey) {
+          openModuleCardById(getModuleSectionId(firstBlockedKey));
+        }
+      });
+    });
 
     form.addEventListener("input", syncSaveBar);
     form.addEventListener("change", syncSaveBar);
@@ -1340,9 +1800,12 @@
 
   bindLoginButtons();
   bindLinkDiscordButton();
+  bindClickableCards();
   bindModuleCards();
+  bindModuleJumpLinks();
   bindCountdownControls();
   bindGuildSearchControls();
   bindSettingsFormUX();
+  focusFlashNotice();
   handleAuthComplete();
 })();

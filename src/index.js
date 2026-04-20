@@ -38,14 +38,42 @@ const {
 } = require("./countdown");
 const {
   assignAutoRole,
-  getAutoRoleState,
-  getAutoRoleOptions,
   normalizeAutoRoleSettings,
   validateAutoRoleSettings,
 } = require("./modules/auto-role");
 const {
-  getWelcomeChannelOptions,
-  getWelcomeState,
+  normalizeAnnouncementSettings,
+  validateAnnouncementSettings,
+} = require("./modules/announcements");
+const {
+  logMemberJoin,
+  logMemberLeave,
+  logMessageDelete,
+  logRoleChange,
+  normalizeAuditLogSettings,
+  validateAuditLogSettings,
+} = require("./modules/audit-log");
+const {
+  moderateMessage,
+  normalizeAutoModerationSettings,
+  validateAutoModerationSettings,
+} = require("./modules/auto-moderation");
+const {
+  getAssignableRoleOptions,
+  getMentionRoleOptions,
+  getTextChannelOptions,
+} = require("./modules/common");
+const { evaluateDashboardModules } = require("./modules/dashboard-registry");
+const {
+  normalizeJoinScreeningSettings,
+  screenNewMember,
+  validateJoinScreeningSettings,
+} = require("./modules/join-screening");
+const {
+  normalizeSuggestionSettings,
+  validateSuggestionSettings,
+} = require("./modules/suggestions");
+const {
   normalizeWelcomeSettings,
   sendWelcomeMessage,
   validateWelcomeSettings,
@@ -53,6 +81,7 @@ const {
 const {
   clearCountdownAlertLastSentOn,
   getCountdownAlertLastSentOn,
+  getNextSuggestionNumber,
   getGuildSettings,
   saveGuildSettings,
   setCountdownAlertLastSentOn,
@@ -78,10 +107,45 @@ const commands = [
   new SlashCommandBuilder()
     .setName("countdown")
     .setDescription("Shows the server's configured countdown."),
+  new SlashCommandBuilder()
+    .setName("announce")
+    .setDescription("Posts a quick staff announcement in the configured announcement channel.")
+    .addStringOption((option) =>
+      option
+        .setName("message")
+        .setDescription("Announcement message")
+        .setRequired(true)
+        .setMaxLength(1500),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("ping")
+        .setDescription("Ping the configured default role for this module"),
+    ),
+  new SlashCommandBuilder()
+    .setName("suggest")
+    .setDescription("Submits an idea to the configured suggestions channel.")
+    .addStringOption((option) =>
+      option
+        .setName("idea")
+        .setDescription("Your suggestion")
+        .setRequired(true)
+        .setMaxLength(1000),
+    )
+    .addBooleanOption((option) =>
+      option
+        .setName("anonymous")
+        .setDescription("Hide your name in the public suggestion post"),
+    ),
 ];
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
 });
 
 const app = express();
@@ -236,6 +300,7 @@ app.get("/dashboard/:guildId", requireAuthPage, async (request, response, next) 
       botMember: dashboardOptions.botMember,
       channelOptions: dashboardOptions.channelOptions,
       guild,
+      mentionRoleOptions: dashboardOptions.mentionRoleOptions,
       roleOptions: dashboardOptions.roleOptions,
       settings,
     });
@@ -245,6 +310,7 @@ app.get("/dashboard/:guildId", requireAuthPage, async (request, response, next) 
         authConfig: getAuthClientConfig(),
         channelOptions: dashboardOptions.channelOptions,
         guild,
+        mentionRoleOptions: dashboardOptions.mentionRoleOptions,
         pageMeta,
         roleOptions: dashboardOptions.roleOptions,
         saveMessage: getSettingsSaveMessage(request.query.saved),
@@ -294,17 +360,28 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       ),
       ...normalizeWelcomeSettings(request.body),
       ...normalizeAutoRoleSettings(request.body),
+      ...normalizeAuditLogSettings(request.body),
+      ...normalizeAutoModerationSettings(request.body),
+      ...normalizeJoinScreeningSettings(request.body),
+      ...normalizeAnnouncementSettings(request.body),
+      ...normalizeSuggestionSettings(request.body),
     };
     const botMember = await getBotGuildMember(guild);
     const validationErrors = [
       ...validateCountdownSettings(settings, guild, botMember),
       ...validateWelcomeSettings(settings, guild, botMember),
       ...validateAutoRoleSettings(settings, guild, botMember),
+      ...validateAuditLogSettings(settings, guild, botMember),
+      ...validateAutoModerationSettings(settings, guild, botMember),
+      ...validateJoinScreeningSettings(settings, guild, botMember),
+      ...validateAnnouncementSettings(settings, guild, botMember),
+      ...validateSuggestionSettings(settings, guild, botMember),
     ];
     const pageMeta = buildGuildPageMeta({
       botMember,
       channelOptions: dashboardOptions.channelOptions,
       guild,
+      mentionRoleOptions: dashboardOptions.mentionRoleOptions,
       roleOptions: dashboardOptions.roleOptions,
       settings,
     });
@@ -316,6 +393,7 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
           channelOptions: dashboardOptions.channelOptions,
           errorMessage: validationErrors[0],
           guild,
+          mentionRoleOptions: dashboardOptions.mentionRoleOptions,
           pageMeta,
           roleOptions: dashboardOptions.roleOptions,
           saveMessage: "",
@@ -423,10 +501,68 @@ client.on(Events.GuildMemberAdd, async (member) => {
   const settings = getGuildSettings(member.guild.id);
 
   try {
+    const screening = await screenNewMember(member, settings);
+    await logMemberJoin(member, settings);
+    if (screening.preventedOnboarding) {
+      return;
+    }
+
     await assignAutoRole(member, settings);
     await sendWelcomeMessage(member, settings);
   } catch (error) {
     console.error(`Failed onboarding flow for guild ${member.guild.id}.`);
+    console.error(error);
+  }
+});
+
+client.on(Events.GuildMemberRemove, async (member) => {
+  const settings = getGuildSettings(member.guild.id);
+
+  try {
+    await logMemberLeave(member, settings);
+  } catch (error) {
+    console.error(`Failed leave audit flow for guild ${member.guild.id}.`);
+    console.error(error);
+  }
+});
+
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  const settings = getGuildSettings(newMember.guild.id);
+
+  try {
+    await logRoleChange(oldMember, newMember, settings);
+  } catch (error) {
+    console.error(`Failed member update audit flow for guild ${newMember.guild.id}.`);
+    console.error(error);
+  }
+});
+
+client.on(Events.MessageDelete, async (message) => {
+  if (!message.guild) {
+    return;
+  }
+
+  const settings = getGuildSettings(message.guild.id);
+
+  try {
+    await logMessageDelete(message, settings);
+  } catch (error) {
+    console.error(`Failed message delete audit flow for guild ${message.guild.id}.`);
+    console.error(error);
+  }
+});
+
+client.on(Events.MessageCreate, async (message) => {
+  if (!message.guild) {
+    return;
+  }
+
+  const settings = getGuildSettings(message.guild.id);
+
+  try {
+    await moderateMessage(message, settings);
+  } catch (error) {
+    console.error(`Failed automod flow for guild ${message.guild.id}.`);
     console.error(error);
   }
 });
@@ -474,8 +610,145 @@ async function handleCommand(interaction) {
     return;
   }
 
+  if (interaction.commandName === "announce") {
+    await handleAnnouncementCommand(interaction);
+    return;
+  }
+
+  if (interaction.commandName === "suggest") {
+    await handleSuggestionCommand(interaction);
+    return;
+  }
+
   await interaction.reply({
     content: "Unknown command.",
+    ephemeral: true,
+  });
+}
+
+async function handleAnnouncementCommand(interaction) {
+  if (!interaction.inGuild() || !interaction.guild) {
+    await interaction.reply({
+      content: "Announcements can only be used inside a server.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (!memberCanManageServer(interaction)) {
+    await interaction.reply({
+      content: "You need Manage Server or Administrator to publish announcements.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.guild.channels.fetch();
+  await interaction.guild.roles.fetch();
+
+  const settings = getGuildSettings(interaction.guildId);
+  const botMember = await getBotGuildMember(interaction.guild);
+  const errors = validateAnnouncementSettings(settings, interaction.guild, botMember);
+  if (!settings.announcementsEnabled || errors.length > 0) {
+    await interaction.reply({
+      content: errors[0] || "Announcements are disabled in this server.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const channel = interaction.guild.channels.cache.get(settings.announcementsChannelId);
+  const message = normalizeText(
+    interaction.options.getString("message", true),
+    "",
+    1500,
+  );
+  const shouldPing = interaction.options.getBoolean("ping") === true;
+  const roleId = settings.announcementsDefaultRoleId;
+
+  if (shouldPing && !roleId) {
+    await interaction.reply({
+      content: "This server has no default announcement role configured to ping.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const content = shouldPing && roleId ? `<@&${roleId}>\n${message}` : message;
+
+  await channel.send({
+    allowedMentions: shouldPing && roleId ? { parse: [], roles: [roleId] } : { parse: [] },
+    content,
+  });
+
+  await interaction.reply({
+    content: `Announcement posted in <#${channel.id}>.`,
+    ephemeral: true,
+  });
+}
+
+async function handleSuggestionCommand(interaction) {
+  if (!interaction.inGuild() || !interaction.guild) {
+    await interaction.reply({
+      content: "Suggestions can only be submitted inside a server.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.guild.channels.fetch();
+  const settings = getGuildSettings(interaction.guildId);
+  const botMember = await getBotGuildMember(interaction.guild);
+  const errors = validateSuggestionSettings(settings, interaction.guild, botMember);
+  if (!settings.suggestionsEnabled || errors.length > 0) {
+    await interaction.reply({
+      content: errors[0] || "Suggestions are disabled in this server.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const idea = normalizeText(interaction.options.getString("idea", true), "", 1000);
+  const anonymous = interaction.options.getBoolean("anonymous") === true;
+  if (anonymous && !settings.suggestionsAnonymousAllowed) {
+    await interaction.reply({
+      content: "Anonymous suggestions are disabled in this server.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const publicChannel = interaction.guild.channels.cache.get(settings.suggestionsChannelId);
+  const reviewChannel = interaction.guild.channels.cache.get(settings.suggestionsReviewChannelId);
+  const suggestionNumber = getNextSuggestionNumber(interaction.guildId);
+  const publicLines = [
+    `Suggestion #${suggestionNumber}`,
+    anonymous ? "Submitted by: Anonymous" : `Submitted by: <@${interaction.user.id}>`,
+    "",
+    idea,
+  ];
+  const reviewLines = [
+    `Suggestion #${suggestionNumber} review copy`,
+    `Author: ${interaction.user.tag} (${interaction.user.id})`,
+    anonymous ? "Public display: Anonymous" : "Public display: Named",
+    "",
+    idea,
+  ];
+
+  await publicChannel.send({
+    allowedMentions: anonymous ? { parse: [] } : { parse: [], users: [interaction.user.id] },
+    content: publicLines.join("\n"),
+  });
+
+  if (reviewChannel && reviewChannel.id !== publicChannel.id) {
+    await reviewChannel.send({
+      allowedMentions: { parse: [] },
+      content: reviewLines.join("\n"),
+    });
+  }
+
+  await interaction.reply({
+    content: `Suggestion #${suggestionNumber} posted in <#${publicChannel.id}>.`,
     ephemeral: true,
   });
 }
@@ -650,8 +923,9 @@ async function getGuildDashboardOptions(guild) {
 
   return {
     botMember,
-    channelOptions: getWelcomeChannelOptions(guild, botMember),
-    roleOptions: getAutoRoleOptions(guild, botMember),
+    channelOptions: getTextChannelOptions(guild, botMember),
+    mentionRoleOptions: getMentionRoleOptions(guild),
+    roleOptions: getAssignableRoleOptions(guild, botMember),
   };
 }
 
@@ -762,6 +1036,14 @@ function normalizeId(value) {
   return /^\d{16,20}$/.test(String(value || "").trim()) ? String(value).trim() : "";
 }
 
+function memberCanManageServer(interaction) {
+  return Boolean(
+    interaction.memberPermissions &&
+      (interaction.memberPermissions.has(PermissionsBitField.Flags.Administrator) ||
+        interaction.memberPermissions.has(PermissionsBitField.Flags.ManageGuild)),
+  );
+}
+
 function getSettingsSaveMessage(savedState) {
   if (savedState === "countdown-removed") {
     return "Countdown removed.";
@@ -771,20 +1053,11 @@ function getSettingsSaveMessage(savedState) {
 }
 
 function buildGuildDashboardSummary(settings) {
-  const countdown = getCountdownResult(settings);
-  const countdownAlert = getCountdownAlertSummary(settings);
-  const welcomeState = getWelcomeState(settings);
-  const autoRoleState = getAutoRoleState(settings);
-  const enabledCount = [settings.countdownEnabled, settings.welcomeEnabled, settings.autoRoleEnabled]
-    .filter(Boolean)
-    .length;
-  const attentionCount = [
-    settings.countdownEnabled &&
-      (countdown.state === "incomplete" ||
-        (settings.countdownAlertEnabled && countdownAlert.state === "incomplete")),
-    settings.welcomeEnabled && welcomeState === "incomplete",
-    settings.autoRoleEnabled && autoRoleState === "incomplete",
-  ].filter(Boolean).length;
+  const modules = evaluateDashboardModules({ settings });
+  const enabledCount = modules.filter((module) => module.enabled).length;
+  const attentionCount = modules.filter(
+    (module) => module.enabled && module.state === "incomplete",
+  ).length;
 
   return {
     attentionCount,
@@ -800,49 +1073,19 @@ function buildGuildPageMeta({
   botMember,
   channelOptions,
   guild,
+  mentionRoleOptions,
   roleOptions,
   settings,
 }) {
-  const countdown = getCountdownResult(settings);
-  const countdownAlert = getCountdownAlertSummary(settings, channelOptions, countdown);
-  const countdownErrors = validateCountdownSettings(settings, guild, botMember);
-  const welcomeErrors = validateWelcomeSettings(settings, guild, botMember);
-  const autoRoleErrors = validateAutoRoleSettings(settings, guild, botMember);
-  const modules = [
-    {
-      enabled: settings.countdownEnabled,
-      key: "countdown",
-      blocker:
-        !settings.countdownEnabled
-          ? ""
-          : countdownErrors[0] ||
-            (countdown.state === "incomplete"
-              ? "Add an event name and target date to finish setup."
-              : ""),
-    },
-    {
-      enabled: settings.welcomeEnabled,
-      key: "welcome",
-      blocker:
-        !settings.welcomeEnabled
-          ? ""
-          : welcomeErrors[0] ||
-            (getWelcomeState(settings, channelOptions) === "incomplete"
-              ? "Choose a welcome channel and message to finish setup."
-              : ""),
-    },
-    {
-      enabled: settings.autoRoleEnabled,
-      key: "autoRole",
-      blocker:
-        !settings.autoRoleEnabled
-          ? ""
-          : autoRoleErrors[0] ||
-            (getAutoRoleState(settings, roleOptions) === "incomplete"
-              ? "Select a default role to finish setup."
-              : ""),
-    },
-  ];
+  const countdownAlert = getCountdownAlertSummary(settings, channelOptions);
+  const modules = evaluateDashboardModules({
+    botMember,
+    channelOptions,
+    guild,
+    mentionRoleOptions,
+    roleOptions,
+    settings,
+  });
   const attentionModules = modules.filter((module) => module.enabled && module.blocker).length;
   const enabledModules = modules.filter((module) => module.enabled).length;
 
@@ -852,11 +1095,10 @@ function buildGuildPageMeta({
     enabledModules,
     helloEnabled: settings.helloEnabled,
     lastUpdatedLabel: formatUpdatedAtLabel(settings.updatedAt),
-    moduleBlockers: {
-      autoRole: modules.find((module) => module.key === "autoRole")?.blocker || "",
-      countdown: modules.find((module) => module.key === "countdown")?.blocker || "",
-      welcome: modules.find((module) => module.key === "welcome")?.blocker || "",
-    },
+    moduleBlockers: Object.fromEntries(
+      modules.map((module) => [module.key, module.blocker || ""]),
+    ),
+    modules,
   };
 }
 

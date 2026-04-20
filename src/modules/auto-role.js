@@ -53,7 +53,7 @@ function validateAutoRoleSettings(settings, guild, botMember) {
   return [];
 }
 
-function renderAutoRoleModuleCard({ blockerText = "", roleOptions, settings }) {
+function renderAutoRoleModuleCard({ blockerText = "", defaultOpen = false, roleOptions, settings }) {
   const state = getAutoRoleState(settings, roleOptions);
   const roleSelectOptions = [
     `<option value="">Select a role</option>`,
@@ -113,6 +113,7 @@ function renderAutoRoleModuleCard({ blockerText = "", roleOptions, settings }) {
     `,
     checked: settings.autoRoleEnabled,
     blockerHtml: escapeHtml(blockerText),
+    defaultOpen,
     descriptionHtml:
       "Assign one default role to new human members as soon as they join the server.",
     eyebrow: "Auto role",

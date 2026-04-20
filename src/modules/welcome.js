@@ -60,7 +60,13 @@ function validateWelcomeSettings(settings, guild, botMember) {
   return [];
 }
 
-function renderWelcomeModuleCard({ blockerText = "", channelOptions, guildName, settings }) {
+function renderWelcomeModuleCard({
+  blockerText = "",
+  channelOptions,
+  defaultOpen = false,
+  guildName,
+  settings,
+}) {
   const state = getWelcomeState(settings, channelOptions);
   const preview = buildWelcomePreview(settings, guildName, channelOptions, state);
   const channelSelectOptions = [
@@ -131,6 +137,7 @@ function renderWelcomeModuleCard({ blockerText = "", channelOptions, guildName, 
     `,
     checked: settings.welcomeEnabled,
     blockerHtml: escapeHtml(blockerText),
+    defaultOpen,
     descriptionHtml:
       "Post a configurable welcome message in one channel whenever a human member joins.",
     eyebrow: "Welcome",
