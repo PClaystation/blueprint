@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   analyzeActiveDayCountdown,
+  buildCountdownAlertMessage,
   clearCountdownSettings,
   getCountdownAlertSummary,
   getCountdownResult,
@@ -200,4 +201,41 @@ test("countdown alert summary shows local and UTC time together", () => {
   assert.equal(summary.channelLabel, "#announcements");
   assert.match(summary.timeLabel, /^09:00 Europe\/Stockholm \/ \d{2}:\d{2} UTC$/);
   assert.match(summary.timeHelpText, /Europe\/Stockholm/);
+});
+
+test("countdown alert messages stay compact for upcoming events", () => {
+  const message = buildCountdownAlertMessage(
+    {
+      countdownAlertEnabled: true,
+      countdownAlertTime: "09:00",
+      countdownEnabled: true,
+      countdownMode: "active-days",
+      countdownTargetDate: "2026-04-20",
+      countdownTitle: "Launch Day",
+      countdownWeekdays: [1, 2, 3, 4, 5],
+    },
+    {
+      now: new Date("2026-04-14T09:30:00Z"),
+    },
+  );
+
+  assert.equal(message, "**Launch Day**\n3 counted days left | April 20, 2026");
+});
+
+test("countdown alert messages stay compact on the event day", () => {
+  const message = buildCountdownAlertMessage(
+    {
+      countdownAlertEnabled: true,
+      countdownAlertTime: "09:00",
+      countdownEnabled: true,
+      countdownMode: "calendar",
+      countdownTargetDate: "2026-04-20",
+      countdownTitle: "Launch Day",
+    },
+    {
+      now: new Date("2026-04-20T09:30:00Z"),
+    },
+  );
+
+  assert.equal(message, "**Launch Day**\nHappening today");
 });

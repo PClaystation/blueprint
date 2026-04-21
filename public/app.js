@@ -1315,6 +1315,7 @@
         excludedDates,
         ignoredExclusionsLine: "",
         metaLine: "Turn the feature on to make /countdown available.",
+        mode,
         modeLabel: mode === "calendar" ? "Calendar days" : "Selected weekdays",
         scheduleLine: "",
         state: "disabled",
@@ -1330,6 +1331,7 @@
         excludedDates,
         ignoredExclusionsLine: "",
         metaLine: "Add an event name and a target date to finish setup.",
+        mode,
         modeLabel: mode === "calendar" ? "Calendar days" : "Selected weekdays",
         scheduleLine: buildScheduleLine(mode, weekdays, null, excludedDates.length),
         state: "incomplete",
@@ -1353,6 +1355,7 @@
         excludedDates,
         ignoredExclusionsLine: "",
         metaLine: "This countdown has already ended.",
+        mode,
         modeLabel: mode === "calendar" ? "Calendar days" : "Selected weekdays",
         scheduleLine: buildScheduleLine(mode, weekdays, activeDayBreakdown),
         state: "past",
@@ -1368,6 +1371,7 @@
         excludedDates,
         ignoredExclusionsLine: "",
         metaLine: `Target date: ${targetDateLabel}`,
+        mode,
         modeLabel: mode === "calendar" ? "Calendar days" : "Selected weekdays",
         scheduleLine: buildScheduleLine(mode, weekdays, activeDayBreakdown),
         state: "today",
@@ -1399,7 +1403,10 @@
         mode === "calendar"
           ? "Every calendar day is included."
           : "Only selected weekdays after today and before the target date are counted. Excluded dates only reduce the total when they land on one of those counted days.",
+      mode,
       modeLabel: mode === "calendar" ? "Calendar days" : "Selected weekdays",
+      remaining,
+      remainingLabel: `${remaining} ${unitLabel}`,
       scheduleLine,
       state: "upcoming",
       targetDateLabel,
@@ -1417,15 +1424,10 @@
 
     return {
       channelLabel: data.alertChannelLabel,
-      note:
-        state !== "live"
-          ? "Pick a channel and time after the countdown itself is configured."
-          : countdownPreview.state === "past"
-            ? "The event date has passed, so no further daily alerts will be sent."
-            : "Blueprint posts this once per day after the selected local time until the event day arrives.",
+      note: getCountdownAlertNote(data, countdownPreview, state, timing.timeLabel),
       preview:
         state === "live"
-          ? buildCountdownAlertPreviewMessage(countdownPreview, timing.timeZone)
+          ? buildCountdownAlertPreviewMessage(countdownPreview)
           : "Daily alerts stay off until the countdown module is enabled and fully configured.",
       state,
       timeHelpText: timing.timeHelpText,
@@ -1433,20 +1435,16 @@
     };
   }
 
-  function buildCountdownAlertPreviewMessage(countdownPreview, timeZone) {
+  function buildCountdownAlertPreviewMessage(countdownPreview) {
     if (countdownPreview.state === "today") {
-      return `${countdownPreview.title} is happening today.\nTarget date: ${countdownPreview.targetDateLabel}`;
+      return `**${countdownPreview.title}**\nHappening today`;
     }
 
     if (countdownPreview.state !== "upcoming") {
       return countdownPreview.commandPreview;
     }
 
-    const isoDate = getCurrentIsoDateInTimeZone(new Date(), timeZone);
-    return [
-      `Daily countdown alert for ${formatDateLabel(isoDate)}`,
-      countdownPreview.commandPreview,
-    ].join("\n");
+    return `**${countdownPreview.title}**\n${getCountdownAlertDeliveryLine(countdownPreview)} | ${countdownPreview.targetDateLabel}`;
   }
 
   function getAlertTiming(alertTime, timeZone) {
@@ -1472,6 +1470,41 @@
       timeLabel,
       timeZone: normalizedTimeZone,
     };
+  }
+
+  function getCountdownAlertNote(data, countdownPreview, state, timeLabel) {
+    if (state === "disabled") {
+      return "";
+    }
+
+    if (state === "incomplete") {
+      return data.enabled && data.title && data.targetDate
+        ? "Choose a channel and send time."
+        : "Finish the countdown setup first.";
+    }
+
+    if (countdownPreview.state === "past") {
+      return "Alerts stop after the target date.";
+    }
+
+    const deliveryTarget =
+      data.alertChannelLabel && data.alertChannelLabel !== "Not selected"
+        ? data.alertChannelLabel
+        : "the selected channel";
+    return `Posts in ${deliveryTarget} at ${timeLabel}.`;
+  }
+
+  function getCountdownAlertDeliveryLine(countdownPreview) {
+    const remaining = Number(countdownPreview.remaining);
+    if (!Number.isFinite(remaining)) {
+      return "Countdown update";
+    }
+
+    if (countdownPreview.mode === "active-days") {
+      return `${remaining} ${remaining === 1 ? "counted day" : "counted days"} left`;
+    }
+
+    return `${remaining} ${remaining === 1 ? "day" : "days"} left`;
   }
 
   function mapCountdownStateToStatus(state) {
