@@ -19,6 +19,8 @@ const { defaults: autoRoleDefaults } = require("./modules/auto-role");
 const { defaults: joinScreeningDefaults } = require("./modules/join-screening");
 const { defaults: starboardDefaults } = require("./modules/starboard");
 const { defaults: suggestionDefaults } = require("./modules/suggestions");
+const { defaults: ticketDefaults } = require("./modules/tickets");
+const { defaults: levelingDefaults } = require("./modules/leveling");
 const { defaults: welcomeDefaults } = require("./modules/welcome");
 
 const dataDir = path.join(process.cwd(), "data");
@@ -72,6 +74,16 @@ db.exec(`
     suggestions_channel_id TEXT NOT NULL DEFAULT '',
     suggestions_review_channel_id TEXT NOT NULL DEFAULT '',
     suggestions_anonymous_allowed INTEGER NOT NULL DEFAULT 0,
+    tickets_enabled INTEGER NOT NULL DEFAULT 0,
+    tickets_intake_channel_id TEXT NOT NULL DEFAULT '',
+    tickets_transcript_channel_id TEXT NOT NULL DEFAULT '',
+    tickets_support_role_id TEXT NOT NULL DEFAULT '',
+    tickets_panel_title TEXT NOT NULL DEFAULT 'Need help? Open a support ticket.',
+    leveling_enabled INTEGER NOT NULL DEFAULT 0,
+    leveling_announce_channel_id TEXT NOT NULL DEFAULT '',
+    leveling_xp_per_message INTEGER NOT NULL DEFAULT 15,
+    leveling_cooldown_seconds INTEGER NOT NULL DEFAULT 60,
+    leveling_level_up_message TEXT NOT NULL DEFAULT 'GG {mention}, you''re now level {level}!',
     updated_by_user_id TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
@@ -151,6 +163,16 @@ ensureColumn("suggestions_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("suggestions_channel_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("suggestions_review_channel_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("suggestions_anonymous_allowed", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("tickets_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("tickets_intake_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("tickets_transcript_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("tickets_support_role_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("tickets_panel_title", "TEXT NOT NULL DEFAULT 'Need help? Open a support ticket.'");
+ensureColumn("leveling_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("leveling_announce_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("leveling_xp_per_message", "INTEGER NOT NULL DEFAULT 15");
+ensureColumn("leveling_cooldown_seconds", "INTEGER NOT NULL DEFAULT 60");
+ensureColumn("leveling_level_up_message", "TEXT NOT NULL DEFAULT 'GG {mention}, you''re now level {level}!'");
 
 const defaults = {
   pingResponse: "Pong.",
@@ -175,6 +197,8 @@ const defaults = {
   ...announcementDefaults,
   ...starboardDefaults,
   ...suggestionDefaults,
+  ...ticketDefaults,
+  ...levelingDefaults,
 };
 
 function getGuildSettings(guildId) {
@@ -238,6 +262,16 @@ function getGuildSettings(guildId) {
     suggestionsChannelId: row.suggestions_channel_id,
     suggestionsReviewChannelId: row.suggestions_review_channel_id,
     suggestionsAnonymousAllowed: Boolean(row.suggestions_anonymous_allowed),
+    ticketsEnabled: Boolean(row.tickets_enabled),
+    ticketsIntakeChannelId: row.tickets_intake_channel_id,
+    ticketsTranscriptChannelId: row.tickets_transcript_channel_id,
+    ticketsSupportRoleId: row.tickets_support_role_id,
+    ticketsPanelTitle: row.tickets_panel_title,
+    levelingEnabled: Boolean(row.leveling_enabled),
+    levelingAnnounceChannelId: row.leveling_announce_channel_id,
+    levelingXpPerMessage: normalizeInteger(row.leveling_xp_per_message, 15),
+    levelingCooldownSeconds: normalizeInteger(row.leveling_cooldown_seconds, 60),
+    levelingLevelUpMessage: row.leveling_level_up_message,
     updatedAt: row.updated_at,
     updatedByUserId: row.updated_by_user_id,
   };
@@ -293,6 +327,16 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
     settings.suggestionsChannelId,
     settings.suggestionsReviewChannelId,
     settings.suggestionsAnonymousAllowed ? 1 : 0,
+    settings.ticketsEnabled ? 1 : 0,
+    settings.ticketsIntakeChannelId,
+    settings.ticketsTranscriptChannelId,
+    settings.ticketsSupportRoleId,
+    settings.ticketsPanelTitle,
+    settings.levelingEnabled ? 1 : 0,
+    settings.levelingAnnounceChannelId,
+    settings.levelingXpPerMessage,
+    settings.levelingCooldownSeconds,
+    settings.levelingLevelUpMessage,
     updatedByUserId,
   ];
 
@@ -346,6 +390,16 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       suggestions_channel_id,
       suggestions_review_channel_id,
       suggestions_anonymous_allowed,
+      tickets_enabled,
+      tickets_intake_channel_id,
+      tickets_transcript_channel_id,
+      tickets_support_role_id,
+      tickets_panel_title,
+      leveling_enabled,
+      leveling_announce_channel_id,
+      leveling_xp_per_message,
+      leveling_cooldown_seconds,
+      leveling_level_up_message,
       updated_by_user_id,
       updated_at
     ) VALUES (${values.map(() => "?").join(", ")}, CURRENT_TIMESTAMP)
@@ -397,6 +451,16 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       suggestions_channel_id = excluded.suggestions_channel_id,
       suggestions_review_channel_id = excluded.suggestions_review_channel_id,
       suggestions_anonymous_allowed = excluded.suggestions_anonymous_allowed,
+      tickets_enabled = excluded.tickets_enabled,
+      tickets_intake_channel_id = excluded.tickets_intake_channel_id,
+      tickets_transcript_channel_id = excluded.tickets_transcript_channel_id,
+      tickets_support_role_id = excluded.tickets_support_role_id,
+      tickets_panel_title = excluded.tickets_panel_title,
+      leveling_enabled = excluded.leveling_enabled,
+      leveling_announce_channel_id = excluded.leveling_announce_channel_id,
+      leveling_xp_per_message = excluded.leveling_xp_per_message,
+      leveling_cooldown_seconds = excluded.leveling_cooldown_seconds,
+      leveling_level_up_message = excluded.leveling_level_up_message,
       updated_by_user_id = excluded.updated_by_user_id,
       updated_at = CURRENT_TIMESTAMP
   `).run(...values);

@@ -21,8 +21,10 @@ const { renderAutoModerationModuleCard } = require("./modules/auto-moderation");
 const { renderAutoRoleModuleCard } = require("./modules/auto-role");
 const { renderJoinScreeningModuleCard } = require("./modules/join-screening");
 const { renderSuggestionModuleCard } = require("./modules/suggestions");
+const { renderTicketModuleCard } = require("./modules/tickets");
 const { renderStarboardModuleCard } = require("./modules/starboard");
 const { renderWelcomeModuleCard } = require("./modules/welcome");
+const { renderLevelingModuleCard } = require("./modules/leveling");
 
 function renderLayout({
   authConfig,
@@ -981,6 +983,21 @@ function renderGuildSettings({
           settings,
         })}
 
+        ${renderTicketModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.tickets || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.tickets),
+          mentionRoleOptions,
+          settings,
+        })}
+
+        ${renderLevelingModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.leveling || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.leveling),
+          settings,
+        })}
+
         <section class="save-bar" data-save-bar>
           <div class="save-bar-copy">
             <strong class="save-bar-title" data-save-title>All changes saved</strong>
@@ -1054,8 +1071,10 @@ const MODULE_SECTION_IDS = {
   autoRole: "module-auto-role",
   countdown: "module-countdown",
   joinScreening: "module-join-screening",
+  leveling: "module-leveling",
   starboard: "module-starboard",
   suggestions: "module-suggestions",
+  tickets: "module-tickets",
   welcome: "module-welcome",
 };
 

@@ -75,6 +75,10 @@ const {
   validateSuggestionSettings,
 } = require("./modules/suggestions");
 const {
+  normalizeTicketSettings,
+  validateTicketSettings,
+} = require("./modules/tickets");
+const {
   buildStarboardPostContent,
   getStarboardReactionCount,
   isStarboardReaction,
@@ -86,6 +90,10 @@ const {
   sendWelcomeMessage,
   validateWelcomeSettings,
 } = require("./modules/welcome");
+const {
+  normalizeLevelingSettings,
+  validateLevelingSettings,
+} = require("./modules/leveling");
 const {
   clearCountdownAlertLastSentOn,
   deleteStarboardEntry,
@@ -379,6 +387,8 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       ...normalizeAnnouncementSettings(request.body),
       ...normalizeStarboardSettings(request.body),
       ...normalizeSuggestionSettings(request.body),
+      ...normalizeTicketSettings(request.body),
+      ...normalizeLevelingSettings(request.body),
     };
     const botMember = await getBotGuildMember(guild);
     const validationErrors = [
@@ -391,6 +401,8 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       ...validateAnnouncementSettings(settings, guild, botMember),
       ...validateStarboardSettings(settings, guild, botMember),
       ...validateSuggestionSettings(settings, guild, botMember),
+      ...validateTicketSettings(settings, guild, botMember),
+      ...validateLevelingSettings(settings, guild, botMember),
     ];
     const pageMeta = buildGuildPageMeta({
       botMember,

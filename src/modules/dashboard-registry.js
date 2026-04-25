@@ -19,7 +19,9 @@ const {
 } = require("./join-screening");
 const { getSuggestionState, validateSuggestionSettings } = require("./suggestions");
 const { getStarboardState, validateStarboardSettings } = require("./starboard");
+const { getTicketState, validateTicketSettings } = require("./tickets");
 const { getWelcomeState, validateWelcomeSettings } = require("./welcome");
+const { getLevelingState, validateLevelingSettings } = require("./leveling");
 
 function evaluateDashboardModules({
   settings,
@@ -49,6 +51,8 @@ function evaluateDashboardModules({
     : [];
   const starboardErrors = canValidate ? validateStarboardSettings(settings, guild, botMember) : [];
   const suggestionErrors = canValidate ? validateSuggestionSettings(settings, guild, botMember) : [];
+  const ticketErrors = canValidate ? validateTicketSettings(settings, guild, botMember) : [];
+  const levelingErrors = canValidate ? validateLevelingSettings(settings, guild, botMember) : [];
 
   return [
     {
@@ -164,6 +168,32 @@ function evaluateDashboardModules({
           : starboardErrors[0] ||
             (getStarboardState(settings, channelOptions) === "incomplete"
               ? "Select a highlight channel to finish setup."
+              : ""),
+    },
+    {
+      key: "tickets",
+      label: "Tickets",
+      enabled: settings.ticketsEnabled,
+      state: getTicketState(settings, channelOptions, mentionRoleOptions),
+      blocker:
+        !settings.ticketsEnabled
+          ? ""
+          : ticketErrors[0] ||
+            (getTicketState(settings, channelOptions, mentionRoleOptions) === "incomplete"
+              ? "Select a ticket intake channel to finish setup."
+              : ""),
+    },
+    {
+      key: "leveling",
+      label: "Leveling",
+      enabled: settings.levelingEnabled,
+      state: getLevelingState(settings, channelOptions),
+      blocker:
+        !settings.levelingEnabled
+          ? ""
+          : levelingErrors[0] ||
+            (getLevelingState(settings, channelOptions) === "incomplete"
+              ? "Select a level-up announcement channel to finish setup."
               : ""),
     },
     {
