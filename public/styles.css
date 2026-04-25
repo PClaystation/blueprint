@@ -994,6 +994,12 @@ small,
   --module-glow: rgba(52, 211, 153, 0.16);
 }
 
+.module-card-starboard {
+  --module-accent: #f59e0b;
+  --module-accent-strong: #f97316;
+  --module-glow: rgba(245, 158, 11, 0.18);
+}
+
 .module-card-header {
   display: grid;
   gap: 18px;

@@ -17,6 +17,7 @@ const { defaults: auditLogDefaults } = require("./modules/audit-log");
 const { defaults: autoModerationDefaults } = require("./modules/auto-moderation");
 const { defaults: autoRoleDefaults } = require("./modules/auto-role");
 const { defaults: joinScreeningDefaults } = require("./modules/join-screening");
+const { defaults: starboardDefaults } = require("./modules/starboard");
 const { defaults: suggestionDefaults } = require("./modules/suggestions");
 const { defaults: welcomeDefaults } = require("./modules/welcome");
 
@@ -90,6 +91,17 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS starboard_entries (
+    source_message_id TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL,
+    source_channel_id TEXT NOT NULL,
+    starboard_channel_id TEXT NOT NULL,
+    starboard_message_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
 ensureColumn("countdown_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("countdown_title", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("countdown_target_date", "TEXT NOT NULL DEFAULT ''");
@@ -131,6 +143,10 @@ ensureColumn("join_screening_quarantine_role_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("announcements_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("announcements_channel_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("announcements_default_role_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("starboard_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("starboard_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("starboard_threshold", "INTEGER NOT NULL DEFAULT 3");
+ensureColumn("starboard_allow_self_star", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("suggestions_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("suggestions_channel_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("suggestions_review_channel_id", "TEXT NOT NULL DEFAULT ''");
@@ -157,6 +173,7 @@ const defaults = {
   ...autoModerationDefaults,
   ...joinScreeningDefaults,
   ...announcementDefaults,
+  ...starboardDefaults,
   ...suggestionDefaults,
 };
 
@@ -213,6 +230,10 @@ function getGuildSettings(guildId) {
     announcementsEnabled: Boolean(row.announcements_enabled),
     announcementsChannelId: row.announcements_channel_id,
     announcementsDefaultRoleId: row.announcements_default_role_id,
+    starboardEnabled: Boolean(row.starboard_enabled),
+    starboardChannelId: row.starboard_channel_id,
+    starboardThreshold: normalizeInteger(row.starboard_threshold, 3),
+    starboardAllowSelfStar: Boolean(row.starboard_allow_self_star),
     suggestionsEnabled: Boolean(row.suggestions_enabled),
     suggestionsChannelId: row.suggestions_channel_id,
     suggestionsReviewChannelId: row.suggestions_review_channel_id,
@@ -264,6 +285,10 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
     settings.announcementsEnabled ? 1 : 0,
     settings.announcementsChannelId,
     settings.announcementsDefaultRoleId,
+    settings.starboardEnabled ? 1 : 0,
+    settings.starboardChannelId,
+    settings.starboardThreshold,
+    settings.starboardAllowSelfStar ? 1 : 0,
     settings.suggestionsEnabled ? 1 : 0,
     settings.suggestionsChannelId,
     settings.suggestionsReviewChannelId,
@@ -313,6 +338,10 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       announcements_enabled,
       announcements_channel_id,
       announcements_default_role_id,
+      starboard_enabled,
+      starboard_channel_id,
+      starboard_threshold,
+      starboard_allow_self_star,
       suggestions_enabled,
       suggestions_channel_id,
       suggestions_review_channel_id,
@@ -360,6 +389,10 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       announcements_enabled = excluded.announcements_enabled,
       announcements_channel_id = excluded.announcements_channel_id,
       announcements_default_role_id = excluded.announcements_default_role_id,
+      starboard_enabled = excluded.starboard_enabled,
+      starboard_channel_id = excluded.starboard_channel_id,
+      starboard_threshold = excluded.starboard_threshold,
+      starboard_allow_self_star = excluded.starboard_allow_self_star,
       suggestions_enabled = excluded.suggestions_enabled,
       suggestions_channel_id = excluded.suggestions_channel_id,
       suggestions_review_channel_id = excluded.suggestions_review_channel_id,
@@ -377,12 +410,15 @@ function clearCountdownAlertLastSentOn(guildId) {
 
 module.exports = {
   clearCountdownAlertLastSentOn,
+  deleteStarboardEntry,
   defaults,
   getNextSuggestionNumber,
   getCountdownAlertLastSentOn,
   getGuildSettings,
+  getStarboardEntry,
   saveGuildSettings,
   setCountdownAlertLastSentOn,
+  upsertStarboardEntry,
 };
 
 function getCountdownAlertLastSentOn(guildId) {
@@ -420,6 +456,54 @@ function getNextSuggestionNumber(guildId) {
     .get(guildId);
 
   return row?.last_number || 1;
+}
+
+function getStarboardEntry(sourceMessageId) {
+  return db
+    .prepare(`
+      SELECT
+        guild_id,
+        source_channel_id,
+        source_message_id,
+        starboard_channel_id,
+        starboard_message_id
+      FROM starboard_entries
+      WHERE source_message_id = ?
+    `)
+    .get(sourceMessageId);
+}
+
+function upsertStarboardEntry({
+  guildId,
+  sourceChannelId,
+  sourceMessageId,
+  starboardChannelId,
+  starboardMessageId,
+}) {
+  db.prepare(`
+    INSERT INTO starboard_entries (
+      guild_id,
+      source_channel_id,
+      source_message_id,
+      starboard_channel_id,
+      starboard_message_id
+    ) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(source_message_id) DO UPDATE SET
+      guild_id = excluded.guild_id,
+      source_channel_id = excluded.source_channel_id,
+      starboard_channel_id = excluded.starboard_channel_id,
+      starboard_message_id = excluded.starboard_message_id
+  `).run(
+    guildId,
+    sourceChannelId,
+    sourceMessageId,
+    starboardChannelId,
+    starboardMessageId,
+  );
+}
+
+function deleteStarboardEntry(sourceMessageId) {
+  db.prepare("DELETE FROM starboard_entries WHERE source_message_id = ?").run(sourceMessageId);
 }
 
 function ensureColumn(name, definition) {

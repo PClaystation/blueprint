@@ -18,6 +18,7 @@ const {
   validateJoinScreeningSettings,
 } = require("./join-screening");
 const { getSuggestionState, validateSuggestionSettings } = require("./suggestions");
+const { getStarboardState, validateStarboardSettings } = require("./starboard");
 const { getWelcomeState, validateWelcomeSettings } = require("./welcome");
 
 function evaluateDashboardModules({
@@ -46,6 +47,7 @@ function evaluateDashboardModules({
   const announcementErrors = canValidate
     ? validateAnnouncementSettings(settings, guild, botMember)
     : [];
+  const starboardErrors = canValidate ? validateStarboardSettings(settings, guild, botMember) : [];
   const suggestionErrors = canValidate ? validateSuggestionSettings(settings, guild, botMember) : [];
 
   return [
@@ -149,6 +151,19 @@ function evaluateDashboardModules({
           : announcementErrors[0] ||
             (getAnnouncementState(settings, channelOptions, mentionRoleOptions) === "incomplete"
               ? "Select a destination channel to finish setup."
+              : ""),
+    },
+    {
+      key: "starboard",
+      label: "Highlights",
+      enabled: settings.starboardEnabled,
+      state: getStarboardState(settings, channelOptions),
+      blocker:
+        !settings.starboardEnabled
+          ? ""
+          : starboardErrors[0] ||
+            (getStarboardState(settings, channelOptions) === "incomplete"
+              ? "Select a highlight channel to finish setup."
               : ""),
     },
     {

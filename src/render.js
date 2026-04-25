@@ -21,6 +21,7 @@ const { renderAutoModerationModuleCard } = require("./modules/auto-moderation");
 const { renderAutoRoleModuleCard } = require("./modules/auto-role");
 const { renderJoinScreeningModuleCard } = require("./modules/join-screening");
 const { renderSuggestionModuleCard } = require("./modules/suggestions");
+const { renderStarboardModuleCard } = require("./modules/starboard");
 const { renderWelcomeModuleCard } = require("./modules/welcome");
 
 function renderLayout({
@@ -105,7 +106,7 @@ function renderHome({ authConfig, sessionUser }) {
         <h1>Run Blueprint from one polished server dashboard.</h1>
         <p class="lede">
           Enable modules, fix setup gaps, and manage welcome flows, countdowns, moderation,
-          announcements, and community tools without burying staff inside long slash commands.
+          announcements, highlights, and community tools without burying staff inside long slash commands.
         </p>
         <div class="hero-actions">
           ${primaryAction}
@@ -152,7 +153,7 @@ function renderHome({ authConfig, sessionUser }) {
               <li>Welcome flows and join roles</li>
               <li>Shared countdowns and daily alerts</li>
               <li>Audit feeds and moderation rules</li>
-              <li>Announcements, suggestions, and screening</li>
+              <li>Announcements, suggestions, highlights, and screening</li>
             </ul>
           </section>
           <section class="info-card">
@@ -966,6 +967,13 @@ function renderGuildSettings({
           settings,
         })}
 
+        ${renderStarboardModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.starboard || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.starboard),
+          settings,
+        })}
+
         ${renderSuggestionModuleCard({
           blockerText: pageMeta?.moduleBlockers?.suggestions || "",
           channelOptions,
@@ -1046,6 +1054,7 @@ const MODULE_SECTION_IDS = {
   autoRole: "module-auto-role",
   countdown: "module-countdown",
   joinScreening: "module-join-screening",
+  starboard: "module-starboard",
   suggestions: "module-suggestions",
   welcome: "module-welcome",
 };

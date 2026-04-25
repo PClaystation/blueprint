@@ -8,6 +8,7 @@ const {
   DiscordAPIError,
   Events,
   GatewayIntentBits,
+  Partials,
   PermissionsBitField,
   REST,
   Routes,
@@ -74,17 +75,27 @@ const {
   validateSuggestionSettings,
 } = require("./modules/suggestions");
 const {
+  buildStarboardPostContent,
+  getStarboardReactionCount,
+  isStarboardReaction,
+  normalizeStarboardSettings,
+  validateStarboardSettings,
+} = require("./modules/starboard");
+const {
   normalizeWelcomeSettings,
   sendWelcomeMessage,
   validateWelcomeSettings,
 } = require("./modules/welcome");
 const {
   clearCountdownAlertLastSentOn,
+  deleteStarboardEntry,
   getCountdownAlertLastSentOn,
   getNextSuggestionNumber,
   getGuildSettings,
+  getStarboardEntry,
   saveGuildSettings,
   setCountdownAlertLastSentOn,
+  upsertStarboardEntry,
 } = require("./storage");
 
 if (!config.token || !config.clientId || !config.sessionSecret) {
@@ -144,8 +155,10 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent,
   ],
+  partials: [Partials.Channel, Partials.Message, Partials.Reaction, Partials.User],
 });
 
 const app = express();
@@ -364,6 +377,7 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       ...normalizeAutoModerationSettings(request.body),
       ...normalizeJoinScreeningSettings(request.body),
       ...normalizeAnnouncementSettings(request.body),
+      ...normalizeStarboardSettings(request.body),
       ...normalizeSuggestionSettings(request.body),
     };
     const botMember = await getBotGuildMember(guild);
@@ -375,6 +389,7 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       ...validateAutoModerationSettings(settings, guild, botMember),
       ...validateJoinScreeningSettings(settings, guild, botMember),
       ...validateAnnouncementSettings(settings, guild, botMember),
+      ...validateStarboardSettings(settings, guild, botMember),
       ...validateSuggestionSettings(settings, guild, botMember),
     ];
     const pageMeta = buildGuildPageMeta({
@@ -550,6 +565,13 @@ client.on(Events.MessageDelete, async (message) => {
     console.error(`Failed message delete audit flow for guild ${message.guild.id}.`);
     console.error(error);
   }
+
+  try {
+    await removeStarboardEntryForSourceMessage(message);
+  } catch (error) {
+    console.error(`Failed starboard cleanup for guild ${message.guild.id}.`);
+    console.error(error);
+  }
 });
 
 client.on(Events.MessageCreate, async (message) => {
@@ -563,6 +585,26 @@ client.on(Events.MessageCreate, async (message) => {
     await moderateMessage(message, settings);
   } catch (error) {
     console.error(`Failed automod flow for guild ${message.guild.id}.`);
+    console.error(error);
+  }
+});
+
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+  try {
+    await syncStarboardReaction(reaction, user);
+  } catch (error) {
+    const guildId = reaction.message?.guildId || reaction.message?.guild?.id || "unknown";
+    console.error(`Failed starboard add flow for guild ${guildId}.`);
+    console.error(error);
+  }
+});
+
+client.on(Events.MessageReactionRemove, async (reaction, user) => {
+  try {
+    await syncStarboardReaction(reaction, user);
+  } catch (error) {
+    const guildId = reaction.message?.guildId || reaction.message?.guild?.id || "unknown";
+    console.error(`Failed starboard remove flow for guild ${guildId}.`);
     console.error(error);
   }
 });
@@ -751,6 +793,124 @@ async function handleSuggestionCommand(interaction) {
     content: `Suggestion #${suggestionNumber} posted in <#${publicChannel.id}>.`,
     ephemeral: true,
   });
+}
+
+async function syncStarboardReaction(reaction, user) {
+  if (user?.bot) {
+    return;
+  }
+
+  const resolvedReaction = await hydrateReaction(reaction);
+  const message = resolvedReaction?.message;
+  if (!message?.guild || !message.author) {
+    return;
+  }
+
+  const settings = getGuildSettings(message.guild.id);
+  if (
+    !settings.starboardEnabled ||
+    !settings.starboardChannelId ||
+    message.author.bot ||
+    message.channelId === settings.starboardChannelId ||
+    !isStarboardReaction(resolvedReaction.emoji)
+  ) {
+    return;
+  }
+
+  const starboardChannel = await getStarboardChannel(message.guild, settings.starboardChannelId);
+  if (!starboardChannel || !starboardChannel.isTextBased()) {
+    return;
+  }
+
+  const botMember = await getBotGuildMember(message.guild);
+  if (!canSendMessages(starboardChannel, botMember)) {
+    return;
+  }
+
+  const starCount = await getStarboardReactionCount(resolvedReaction, {
+    allowSelfStar: settings.starboardAllowSelfStar,
+    authorId: message.author.id,
+  });
+  const existingEntry = getStarboardEntry(message.id);
+
+  if (starCount < settings.starboardThreshold) {
+    await deleteStarboardPost(existingEntry, starboardChannel);
+    return;
+  }
+
+  const payload = {
+    allowedMentions: { parse: [] },
+    content: buildStarboardPostContent({ message, starCount }),
+  };
+
+  if (existingEntry && existingEntry.starboardChannelId === starboardChannel.id) {
+    const existingMessage = await starboardChannel.messages
+      .fetch(existingEntry.starboardMessageId)
+      .catch(() => null);
+
+    if (existingMessage) {
+      await existingMessage.edit(payload);
+      return;
+    }
+  }
+
+  if (existingEntry && existingEntry.starboardChannelId !== starboardChannel.id) {
+    const previousChannel = await getStarboardChannel(message.guild, existingEntry.starboardChannelId);
+    await deleteStarboardPost(existingEntry, previousChannel);
+  }
+
+  const starboardMessage = await starboardChannel.send(payload);
+  upsertStarboardEntry({
+    guildId: message.guild.id,
+    sourceChannelId: message.channelId,
+    sourceMessageId: message.id,
+    starboardChannelId: starboardChannel.id,
+    starboardMessageId: starboardMessage.id,
+  });
+}
+
+async function removeStarboardEntryForSourceMessage(message) {
+  const entry = getStarboardEntry(message.id);
+  if (!entry) {
+    return;
+  }
+
+  const starboardChannel = await getStarboardChannel(message.guild, entry.starboardChannelId);
+  await deleteStarboardPost(entry, starboardChannel);
+}
+
+async function deleteStarboardPost(entry, starboardChannel) {
+  if (!entry) {
+    return;
+  }
+
+  if (starboardChannel?.isTextBased()) {
+    const starboardMessage = await starboardChannel.messages
+      .fetch(entry.starboardMessageId)
+      .catch(() => null);
+
+    if (starboardMessage) {
+      await starboardMessage.delete().catch(() => null);
+    }
+  }
+
+  deleteStarboardEntry(entry.sourceMessageId);
+}
+
+async function hydrateReaction(reaction) {
+  if (reaction.partial) {
+    await reaction.fetch().catch(() => null);
+  }
+
+  if (reaction.message?.partial) {
+    await reaction.message.fetch().catch(() => null);
+  }
+
+  return reaction;
+}
+
+async function getStarboardChannel(guild, channelId) {
+  return guild.channels.cache.get(channelId) || guild.channels.fetch(channelId).catch(() => null);
 }
 
 function requireAuthPage(request, response, next) {

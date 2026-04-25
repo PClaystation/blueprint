@@ -498,6 +498,7 @@
       autoRole: "Auto role",
       countdown: "Countdown",
       joinScreening: "Join screening",
+      starboard: "Highlights",
       suggestions: "Suggestions",
       welcome: "Welcome",
     };
@@ -530,6 +531,11 @@
         today: "Today",
       },
       joinScreening: {
+        disabled: "Disabled",
+        incomplete: "Needs setup",
+        live: "Live",
+      },
+      starboard: {
         disabled: "Disabled",
         incomplete: "Needs setup",
         live: "Live",
@@ -730,6 +736,7 @@
       const autoModerationEnabled = isChecked("autoModerationEnabled");
       const joinScreeningEnabled = isChecked("joinScreeningEnabled");
       const announcementsEnabled = isChecked("announcementsEnabled");
+      const starboardEnabled = isChecked("starboardEnabled");
       const suggestionsEnabled = isChecked("suggestionsEnabled");
       const welcomeChannelId = getValue("welcomeChannelId");
       const welcomeMessage = getValue("welcomeMessageTemplate");
@@ -748,6 +755,7 @@
       const joinScreeningAction = getValue("joinScreeningAction") || "flag";
       const joinScreeningQuarantineRoleId = getValue("joinScreeningQuarantineRoleId");
       const announcementsChannelId = getValue("announcementsChannelId");
+      const starboardChannelId = getValue("starboardChannelId");
       const suggestionsChannelId = getValue("suggestionsChannelId");
       const modules = {
         announcements: {
@@ -773,6 +781,11 @@
         joinScreening: {
           blocker: "",
           enabled: joinScreeningEnabled,
+          state: "disabled",
+        },
+        starboard: {
+          blocker: "",
+          enabled: starboardEnabled,
           state: "disabled",
         },
         suggestions: {
@@ -859,6 +872,14 @@
         if (!announcementsChannelId) {
           modules.announcements.blocker = "Choose an announcement channel to finish setup.";
           modules.announcements.state = "incomplete";
+        }
+      }
+
+      if (starboardEnabled) {
+        modules.starboard.state = "live";
+        if (!starboardChannelId) {
+          modules.starboard.blocker = "Choose a highlight channel to finish setup.";
+          modules.starboard.state = "incomplete";
         }
       }
 
