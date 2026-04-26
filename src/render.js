@@ -25,6 +25,11 @@ const { renderTicketModuleCard } = require("./modules/tickets");
 const { renderStarboardModuleCard } = require("./modules/starboard");
 const { renderWelcomeModuleCard } = require("./modules/welcome");
 const { renderLevelingModuleCard } = require("./modules/leveling");
+const { renderReactionRoleModuleCard } = require("./modules/reaction-roles");
+const { renderAntiRaidModuleCard } = require("./modules/anti-raid");
+const { renderAutomationModuleCard } = require("./modules/automations");
+const { renderModmailModuleCard } = require("./modules/modmail");
+const { renderApplicationsModuleCard } = require("./modules/applications");
 
 function renderLayout({
   authConfig,
@@ -995,6 +1000,43 @@ function renderGuildSettings({
           blockerText: pageMeta?.moduleBlockers?.leveling || "",
           channelOptions,
           defaultOpen: Boolean(pageMeta?.moduleBlockers?.leveling),
+          settings,
+        })}
+
+        ${renderReactionRoleModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.reactionRoles || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.reactionRoles),
+          settings,
+        })}
+
+        ${renderAntiRaidModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.antiRaid || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.antiRaid),
+          settings,
+        })}
+
+        ${renderAutomationModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.automations || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.automations),
+          settings,
+        })}
+
+        ${renderModmailModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.modmail || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.modmail),
+          roleOptions: mentionRoleOptions,
+          settings,
+        })}
+
+        ${renderApplicationsModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.applications || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.applications),
+          roleOptions: mentionRoleOptions,
           settings,
         })}
 

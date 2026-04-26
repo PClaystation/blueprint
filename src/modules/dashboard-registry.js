@@ -17,11 +17,16 @@ const {
   getJoinScreeningState,
   validateJoinScreeningSettings,
 } = require("./join-screening");
+const { getModmailState, validateModmailSettings } = require("./modmail");
 const { getSuggestionState, validateSuggestionSettings } = require("./suggestions");
 const { getStarboardState, validateStarboardSettings } = require("./starboard");
 const { getTicketState, validateTicketSettings } = require("./tickets");
 const { getWelcomeState, validateWelcomeSettings } = require("./welcome");
 const { getLevelingState, validateLevelingSettings } = require("./leveling");
+const { getAntiRaidState, validateAntiRaidSettings } = require("./anti-raid");
+const { getAutomationState, validateAutomationSettings } = require("./automations");
+const { getReactionRoleState, validateReactionRoleSettings } = require("./reaction-roles");
+const { getApplicationState, validateApplicationSettings } = require("./applications");
 
 function evaluateDashboardModules({
   settings,
@@ -53,6 +58,11 @@ function evaluateDashboardModules({
   const suggestionErrors = canValidate ? validateSuggestionSettings(settings, guild, botMember) : [];
   const ticketErrors = canValidate ? validateTicketSettings(settings, guild, botMember) : [];
   const levelingErrors = canValidate ? validateLevelingSettings(settings, guild, botMember) : [];
+  const reactionRoleErrors = canValidate ? validateReactionRoleSettings(settings, guild) : [];
+  const antiRaidErrors = canValidate ? validateAntiRaidSettings(settings, guild, botMember) : [];
+  const automationErrors = canValidate ? validateAutomationSettings(settings, guild) : [];
+  const modmailErrors = canValidate ? validateModmailSettings(settings, guild) : [];
+  const applicationErrors = canValidate ? validateApplicationSettings(settings, guild) : [];
 
   return [
     {
@@ -194,6 +204,71 @@ function evaluateDashboardModules({
           : levelingErrors[0] ||
             (getLevelingState(settings, channelOptions) === "incomplete"
               ? "Select a level-up announcement channel to finish setup."
+              : ""),
+    },
+    {
+      key: "reactionRoles",
+      label: "Reaction roles",
+      enabled: settings.reactionRolesEnabled,
+      state: getReactionRoleState(settings, channelOptions),
+      blocker:
+        !settings.reactionRolesEnabled
+          ? ""
+          : reactionRoleErrors[0] ||
+            (getReactionRoleState(settings, channelOptions) === "incomplete"
+              ? "Select a channel and setup message ID to finish setup."
+              : ""),
+    },
+    {
+      key: "antiRaid",
+      label: "Anti-raid",
+      enabled: settings.antiRaidEnabled,
+      state: getAntiRaidState(settings, channelOptions),
+      blocker:
+        !settings.antiRaidEnabled
+          ? ""
+          : antiRaidErrors[0] ||
+            (getAntiRaidState(settings, channelOptions) === "incomplete"
+              ? "Select an anti-raid alert channel to finish setup."
+              : ""),
+    },
+    {
+      key: "automations",
+      label: "Automations",
+      enabled: settings.automationsEnabled,
+      state: getAutomationState(settings, channelOptions),
+      blocker:
+        !settings.automationsEnabled
+          ? ""
+          : automationErrors[0] ||
+            (getAutomationState(settings, channelOptions) === "incomplete"
+              ? "Choose a trigger, action, and log channel to finish setup."
+              : ""),
+    },
+    {
+      key: "modmail",
+      label: "Modmail",
+      enabled: settings.modmailEnabled,
+      state: getModmailState(settings, channelOptions, roleOptions),
+      blocker:
+        !settings.modmailEnabled
+          ? ""
+          : modmailErrors[0] ||
+            (getModmailState(settings, channelOptions, roleOptions) === "incomplete"
+              ? "Select an inbox channel and staff role to finish setup."
+              : ""),
+    },
+    {
+      key: "applications",
+      label: "Applications",
+      enabled: settings.applicationsEnabled,
+      state: getApplicationState(settings, channelOptions, roleOptions),
+      blocker:
+        !settings.applicationsEnabled
+          ? ""
+          : applicationErrors[0] ||
+            (getApplicationState(settings, channelOptions, roleOptions) === "incomplete"
+              ? "Select a destination channel and reviewer role to finish setup."
               : ""),
     },
     {
