@@ -95,6 +95,20 @@ const {
   validateLevelingSettings,
 } = require("./modules/leveling");
 const {
+  normalizeReactionRoleSettings,
+  validateReactionRoleSettings,
+} = require("./modules/reaction-roles");
+const { normalizeAntiRaidSettings, validateAntiRaidSettings } = require("./modules/anti-raid");
+const {
+  normalizeAutomationSettings,
+  validateAutomationSettings,
+} = require("./modules/automations");
+const { normalizeModmailSettings, validateModmailSettings } = require("./modules/modmail");
+const {
+  normalizeApplicationSettings,
+  validateApplicationSettings,
+} = require("./modules/applications");
+const {
   clearCountdownAlertLastSentOn,
   deleteStarboardEntry,
   getCountdownAlertLastSentOn,
@@ -389,6 +403,11 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       ...normalizeSuggestionSettings(request.body),
       ...normalizeTicketSettings(request.body),
       ...normalizeLevelingSettings(request.body),
+      ...normalizeReactionRoleSettings(request.body),
+      ...normalizeAntiRaidSettings(request.body),
+      ...normalizeAutomationSettings(request.body),
+      ...normalizeModmailSettings(request.body),
+      ...normalizeApplicationSettings(request.body),
     };
     const botMember = await getBotGuildMember(guild);
     const validationErrors = [
@@ -403,6 +422,11 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       ...validateSuggestionSettings(settings, guild, botMember),
       ...validateTicketSettings(settings, guild, botMember),
       ...validateLevelingSettings(settings, guild, botMember),
+      ...validateReactionRoleSettings(settings, guild, botMember),
+      ...validateAntiRaidSettings(settings, guild, botMember),
+      ...validateAutomationSettings(settings, guild, botMember),
+      ...validateModmailSettings(settings, guild, botMember),
+      ...validateApplicationSettings(settings, guild, botMember),
     ];
     const pageMeta = buildGuildPageMeta({
       botMember,

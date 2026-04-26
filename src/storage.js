@@ -22,6 +22,11 @@ const { defaults: suggestionDefaults } = require("./modules/suggestions");
 const { defaults: ticketDefaults } = require("./modules/tickets");
 const { defaults: levelingDefaults } = require("./modules/leveling");
 const { defaults: welcomeDefaults } = require("./modules/welcome");
+const { defaults: reactionRoleDefaults } = require("./modules/reaction-roles");
+const { defaults: antiRaidDefaults } = require("./modules/anti-raid");
+const { defaults: automationDefaults } = require("./modules/automations");
+const { defaults: modmailDefaults } = require("./modules/modmail");
+const { defaults: applicationDefaults } = require("./modules/applications");
 
 const dataDir = path.join(process.cwd(), "data");
 fs.mkdirSync(dataDir, { recursive: true });
@@ -84,6 +89,31 @@ db.exec(`
     leveling_xp_per_message INTEGER NOT NULL DEFAULT 15,
     leveling_cooldown_seconds INTEGER NOT NULL DEFAULT 60,
     leveling_level_up_message TEXT NOT NULL DEFAULT 'GG {mention}, you''re now level {level}!',
+    reaction_roles_enabled INTEGER NOT NULL DEFAULT 0,
+    reaction_roles_channel_id TEXT NOT NULL DEFAULT '',
+    reaction_roles_message_id TEXT NOT NULL DEFAULT '',
+    reaction_roles_max_per_member INTEGER NOT NULL DEFAULT 1,
+    reaction_roles_remove_on_unreact INTEGER NOT NULL DEFAULT 1,
+    anti_raid_enabled INTEGER NOT NULL DEFAULT 0,
+    anti_raid_alert_channel_id TEXT NOT NULL DEFAULT '',
+    anti_raid_join_threshold INTEGER NOT NULL DEFAULT 8,
+    anti_raid_window_seconds INTEGER NOT NULL DEFAULT 20,
+    anti_raid_lockdown_minutes INTEGER NOT NULL DEFAULT 10,
+    automations_enabled INTEGER NOT NULL DEFAULT 0,
+    automations_log_channel_id TEXT NOT NULL DEFAULT '',
+    automations_trigger TEXT NOT NULL DEFAULT 'member_join',
+    automations_action TEXT NOT NULL DEFAULT 'send_message',
+    automations_keyword TEXT NOT NULL DEFAULT '',
+    automations_cooldown_seconds INTEGER NOT NULL DEFAULT 60,
+    modmail_enabled INTEGER NOT NULL DEFAULT 0,
+    modmail_inbox_channel_id TEXT NOT NULL DEFAULT '',
+    modmail_staff_role_id TEXT NOT NULL DEFAULT '',
+    modmail_auto_reply TEXT NOT NULL DEFAULT 'Thanks for contacting staff. We will reply soon.',
+    applications_enabled INTEGER NOT NULL DEFAULT 0,
+    applications_channel_id TEXT NOT NULL DEFAULT '',
+    applications_reviewer_role_id TEXT NOT NULL DEFAULT '',
+    applications_form_title TEXT NOT NULL DEFAULT 'Staff Application',
+    applications_questions TEXT NOT NULL DEFAULT 'Why do you want to help this server?\nWhat timezone are you in?',
     updated_by_user_id TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
@@ -173,6 +203,37 @@ ensureColumn("leveling_announce_channel_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("leveling_xp_per_message", "INTEGER NOT NULL DEFAULT 15");
 ensureColumn("leveling_cooldown_seconds", "INTEGER NOT NULL DEFAULT 60");
 ensureColumn("leveling_level_up_message", "TEXT NOT NULL DEFAULT 'GG {mention}, you''re now level {level}!'");
+ensureColumn("reaction_roles_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("reaction_roles_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("reaction_roles_message_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("reaction_roles_max_per_member", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("reaction_roles_remove_on_unreact", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("anti_raid_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("anti_raid_alert_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("anti_raid_join_threshold", "INTEGER NOT NULL DEFAULT 8");
+ensureColumn("anti_raid_window_seconds", "INTEGER NOT NULL DEFAULT 20");
+ensureColumn("anti_raid_lockdown_minutes", "INTEGER NOT NULL DEFAULT 10");
+ensureColumn("automations_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("automations_log_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("automations_trigger", "TEXT NOT NULL DEFAULT 'member_join'");
+ensureColumn("automations_action", "TEXT NOT NULL DEFAULT 'send_message'");
+ensureColumn("automations_keyword", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("automations_cooldown_seconds", "INTEGER NOT NULL DEFAULT 60");
+ensureColumn("modmail_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("modmail_inbox_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("modmail_staff_role_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn(
+  "modmail_auto_reply",
+  "TEXT NOT NULL DEFAULT 'Thanks for contacting staff. We will reply soon.'",
+);
+ensureColumn("applications_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("applications_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("applications_reviewer_role_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("applications_form_title", "TEXT NOT NULL DEFAULT 'Staff Application'");
+ensureColumn(
+  "applications_questions",
+  "TEXT NOT NULL DEFAULT 'Why do you want to help this server?\nWhat timezone are you in?'",
+);
 
 const defaults = {
   pingResponse: "Pong.",
@@ -199,6 +260,11 @@ const defaults = {
   ...suggestionDefaults,
   ...ticketDefaults,
   ...levelingDefaults,
+  ...reactionRoleDefaults,
+  ...antiRaidDefaults,
+  ...automationDefaults,
+  ...modmailDefaults,
+  ...applicationDefaults,
 };
 
 function getGuildSettings(guildId) {
@@ -272,6 +338,33 @@ function getGuildSettings(guildId) {
     levelingXpPerMessage: normalizeInteger(row.leveling_xp_per_message, 15),
     levelingCooldownSeconds: normalizeInteger(row.leveling_cooldown_seconds, 60),
     levelingLevelUpMessage: row.leveling_level_up_message,
+    reactionRolesEnabled: Boolean(row.reaction_roles_enabled),
+    reactionRolesChannelId: row.reaction_roles_channel_id,
+    reactionRolesMessageId: row.reaction_roles_message_id,
+    reactionRolesMaxPerMember: normalizeInteger(row.reaction_roles_max_per_member, 1),
+    reactionRolesRemoveOnUnreact: Boolean(row.reaction_roles_remove_on_unreact),
+    antiRaidEnabled: Boolean(row.anti_raid_enabled),
+    antiRaidAlertChannelId: row.anti_raid_alert_channel_id,
+    antiRaidJoinThreshold: normalizeInteger(row.anti_raid_join_threshold, 8),
+    antiRaidWindowSeconds: normalizeInteger(row.anti_raid_window_seconds, 20),
+    antiRaidLockdownMinutes: normalizeInteger(row.anti_raid_lockdown_minutes, 10),
+    automationsEnabled: Boolean(row.automations_enabled),
+    automationsLogChannelId: row.automations_log_channel_id,
+    automationsTrigger: row.automations_trigger || "member_join",
+    automationsAction: row.automations_action || "send_message",
+    automationsKeyword: row.automations_keyword || "",
+    automationsCooldownSeconds: normalizeInteger(row.automations_cooldown_seconds, 60),
+    modmailEnabled: Boolean(row.modmail_enabled),
+    modmailInboxChannelId: row.modmail_inbox_channel_id,
+    modmailStaffRoleId: row.modmail_staff_role_id,
+    modmailAutoReply: row.modmail_auto_reply || "Thanks for contacting staff. We will reply soon.",
+    applicationsEnabled: Boolean(row.applications_enabled),
+    applicationsChannelId: row.applications_channel_id,
+    applicationsReviewerRoleId: row.applications_reviewer_role_id,
+    applicationsFormTitle: row.applications_form_title || "Staff Application",
+    applicationsQuestions:
+      row.applications_questions ||
+      "Why do you want to help this server?\nWhat timezone are you in?",
     updatedAt: row.updated_at,
     updatedByUserId: row.updated_by_user_id,
   };
@@ -337,6 +430,31 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
     settings.levelingXpPerMessage,
     settings.levelingCooldownSeconds,
     settings.levelingLevelUpMessage,
+    settings.reactionRolesEnabled ? 1 : 0,
+    settings.reactionRolesChannelId,
+    settings.reactionRolesMessageId,
+    settings.reactionRolesMaxPerMember,
+    settings.reactionRolesRemoveOnUnreact ? 1 : 0,
+    settings.antiRaidEnabled ? 1 : 0,
+    settings.antiRaidAlertChannelId,
+    settings.antiRaidJoinThreshold,
+    settings.antiRaidWindowSeconds,
+    settings.antiRaidLockdownMinutes,
+    settings.automationsEnabled ? 1 : 0,
+    settings.automationsLogChannelId,
+    settings.automationsTrigger,
+    settings.automationsAction,
+    settings.automationsKeyword,
+    settings.automationsCooldownSeconds,
+    settings.modmailEnabled ? 1 : 0,
+    settings.modmailInboxChannelId,
+    settings.modmailStaffRoleId,
+    settings.modmailAutoReply,
+    settings.applicationsEnabled ? 1 : 0,
+    settings.applicationsChannelId,
+    settings.applicationsReviewerRoleId,
+    settings.applicationsFormTitle,
+    settings.applicationsQuestions,
     updatedByUserId,
   ];
 
@@ -400,6 +518,31 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       leveling_xp_per_message,
       leveling_cooldown_seconds,
       leveling_level_up_message,
+      reaction_roles_enabled,
+      reaction_roles_channel_id,
+      reaction_roles_message_id,
+      reaction_roles_max_per_member,
+      reaction_roles_remove_on_unreact,
+      anti_raid_enabled,
+      anti_raid_alert_channel_id,
+      anti_raid_join_threshold,
+      anti_raid_window_seconds,
+      anti_raid_lockdown_minutes,
+      automations_enabled,
+      automations_log_channel_id,
+      automations_trigger,
+      automations_action,
+      automations_keyword,
+      automations_cooldown_seconds,
+      modmail_enabled,
+      modmail_inbox_channel_id,
+      modmail_staff_role_id,
+      modmail_auto_reply,
+      applications_enabled,
+      applications_channel_id,
+      applications_reviewer_role_id,
+      applications_form_title,
+      applications_questions,
       updated_by_user_id,
       updated_at
     ) VALUES (${values.map(() => "?").join(", ")}, CURRENT_TIMESTAMP)
@@ -461,6 +604,31 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       leveling_xp_per_message = excluded.leveling_xp_per_message,
       leveling_cooldown_seconds = excluded.leveling_cooldown_seconds,
       leveling_level_up_message = excluded.leveling_level_up_message,
+      reaction_roles_enabled = excluded.reaction_roles_enabled,
+      reaction_roles_channel_id = excluded.reaction_roles_channel_id,
+      reaction_roles_message_id = excluded.reaction_roles_message_id,
+      reaction_roles_max_per_member = excluded.reaction_roles_max_per_member,
+      reaction_roles_remove_on_unreact = excluded.reaction_roles_remove_on_unreact,
+      anti_raid_enabled = excluded.anti_raid_enabled,
+      anti_raid_alert_channel_id = excluded.anti_raid_alert_channel_id,
+      anti_raid_join_threshold = excluded.anti_raid_join_threshold,
+      anti_raid_window_seconds = excluded.anti_raid_window_seconds,
+      anti_raid_lockdown_minutes = excluded.anti_raid_lockdown_minutes,
+      automations_enabled = excluded.automations_enabled,
+      automations_log_channel_id = excluded.automations_log_channel_id,
+      automations_trigger = excluded.automations_trigger,
+      automations_action = excluded.automations_action,
+      automations_keyword = excluded.automations_keyword,
+      automations_cooldown_seconds = excluded.automations_cooldown_seconds,
+      modmail_enabled = excluded.modmail_enabled,
+      modmail_inbox_channel_id = excluded.modmail_inbox_channel_id,
+      modmail_staff_role_id = excluded.modmail_staff_role_id,
+      modmail_auto_reply = excluded.modmail_auto_reply,
+      applications_enabled = excluded.applications_enabled,
+      applications_channel_id = excluded.applications_channel_id,
+      applications_reviewer_role_id = excluded.applications_reviewer_role_id,
+      applications_form_title = excluded.applications_form_title,
+      applications_questions = excluded.applications_questions,
       updated_by_user_id = excluded.updated_by_user_id,
       updated_at = CURRENT_TIMESTAMP
   `).run(...values);
