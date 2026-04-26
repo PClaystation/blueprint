@@ -43,6 +43,14 @@ const {
   validateAutoRoleSettings,
 } = require("./modules/auto-role");
 const {
+  normalizeAiToolsSettings,
+  validateAiToolsSettings,
+} = require("./modules/ai-tools");
+const {
+  normalizeAntiRaidSettings,
+  validateAntiRaidSettings,
+} = require("./modules/anti-raid");
+const {
   normalizeAnnouncementSettings,
   validateAnnouncementSettings,
 } = require("./modules/announcements");
@@ -64,7 +72,10 @@ const {
   getMentionRoleOptions,
   getTextChannelOptions,
 } = require("./modules/common");
-const { evaluateDashboardModules } = require("./modules/dashboard-registry");
+const {
+  evaluateDashboardModules,
+  getRuntimeModuleValidationErrors,
+} = require("./modules/dashboard-registry");
 const {
   normalizeJoinScreeningSettings,
   screenNewMember,
@@ -98,7 +109,6 @@ const {
   normalizeReactionRoleSettings,
   validateReactionRoleSettings,
 } = require("./modules/reaction-roles");
-const { normalizeAntiRaidSettings, validateAntiRaidSettings } = require("./modules/anti-raid");
 const {
   normalizeAutomationSettings,
   validateAutomationSettings,
@@ -408,6 +418,7 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       ...normalizeAutomationSettings(request.body),
       ...normalizeModmailSettings(request.body),
       ...normalizeApplicationSettings(request.body),
+      ...normalizeAiToolsSettings(request.body),
     };
     const botMember = await getBotGuildMember(guild);
     const validationErrors = [
@@ -427,6 +438,8 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
       ...validateAutomationSettings(settings, guild, botMember),
       ...validateModmailSettings(settings, guild, botMember),
       ...validateApplicationSettings(settings, guild, botMember),
+      ...validateAiToolsSettings(settings, guild, botMember),
+      ...getRuntimeModuleValidationErrors(settings),
     ];
     const pageMeta = buildGuildPageMeta({
       botMember,

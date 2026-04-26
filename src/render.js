@@ -16,6 +16,8 @@ const {
   renderModuleFacts,
 } = require("./html");
 const { renderAnnouncementModuleCard } = require("./modules/announcements");
+const { renderAiToolsModuleCard } = require("./modules/ai-tools");
+const { renderAntiRaidModuleCard } = require("./modules/anti-raid");
 const { renderAuditLogModuleCard } = require("./modules/audit-log");
 const { renderAutoModerationModuleCard } = require("./modules/auto-moderation");
 const { renderAutoRoleModuleCard } = require("./modules/auto-role");
@@ -26,7 +28,6 @@ const { renderStarboardModuleCard } = require("./modules/starboard");
 const { renderWelcomeModuleCard } = require("./modules/welcome");
 const { renderLevelingModuleCard } = require("./modules/leveling");
 const { renderReactionRoleModuleCard } = require("./modules/reaction-roles");
-const { renderAntiRaidModuleCard } = require("./modules/anti-raid");
 const { renderAutomationModuleCard } = require("./modules/automations");
 const { renderModmailModuleCard } = require("./modules/modmail");
 const { renderApplicationsModuleCard } = require("./modules/applications");
@@ -988,6 +989,13 @@ function renderGuildSettings({
           settings,
         })}
 
+        ${renderReactionRoleModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.reactionRoles || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.reactionRoles),
+          settings,
+        })}
+
         ${renderTicketModuleCard({
           blockerText: pageMeta?.moduleBlockers?.tickets || "",
           channelOptions,
@@ -1000,13 +1008,6 @@ function renderGuildSettings({
           blockerText: pageMeta?.moduleBlockers?.leveling || "",
           channelOptions,
           defaultOpen: Boolean(pageMeta?.moduleBlockers?.leveling),
-          settings,
-        })}
-
-        ${renderReactionRoleModuleCard({
-          blockerText: pageMeta?.moduleBlockers?.reactionRoles || "",
-          channelOptions,
-          defaultOpen: Boolean(pageMeta?.moduleBlockers?.reactionRoles),
           settings,
         })}
 
@@ -1037,6 +1038,13 @@ function renderGuildSettings({
           channelOptions,
           defaultOpen: Boolean(pageMeta?.moduleBlockers?.applications),
           roleOptions: mentionRoleOptions,
+          settings,
+        })}
+
+        ${renderAiToolsModuleCard({
+          blockerText: pageMeta?.moduleBlockers?.aiTools || "",
+          channelOptions,
+          defaultOpen: Boolean(pageMeta?.moduleBlockers?.aiTools),
           settings,
         })}
 

@@ -13,6 +13,8 @@ const {
   serializeWeekdays,
 } = require("./countdown");
 const { defaults: announcementDefaults } = require("./modules/announcements");
+const { defaults: aiToolsDefaults } = require("./modules/ai-tools");
+const { defaults: antiRaidDefaults } = require("./modules/anti-raid");
 const { defaults: auditLogDefaults } = require("./modules/audit-log");
 const { defaults: autoModerationDefaults } = require("./modules/auto-moderation");
 const { defaults: autoRoleDefaults } = require("./modules/auto-role");
@@ -21,9 +23,8 @@ const { defaults: starboardDefaults } = require("./modules/starboard");
 const { defaults: suggestionDefaults } = require("./modules/suggestions");
 const { defaults: ticketDefaults } = require("./modules/tickets");
 const { defaults: levelingDefaults } = require("./modules/leveling");
-const { defaults: welcomeDefaults } = require("./modules/welcome");
 const { defaults: reactionRoleDefaults } = require("./modules/reaction-roles");
-const { defaults: antiRaidDefaults } = require("./modules/anti-raid");
+const { defaults: welcomeDefaults } = require("./modules/welcome");
 const { defaults: automationDefaults } = require("./modules/automations");
 const { defaults: modmailDefaults } = require("./modules/modmail");
 const { defaults: applicationDefaults } = require("./modules/applications");
@@ -92,13 +93,16 @@ db.exec(`
     reaction_roles_enabled INTEGER NOT NULL DEFAULT 0,
     reaction_roles_channel_id TEXT NOT NULL DEFAULT '',
     reaction_roles_message_id TEXT NOT NULL DEFAULT '',
-    reaction_roles_max_per_member INTEGER NOT NULL DEFAULT 1,
+    reaction_roles_prompt TEXT NOT NULL DEFAULT 'Pick your roles from the reaction menu below.',
+    reaction_roles_max_per_member INTEGER NOT NULL DEFAULT 3,
     reaction_roles_remove_on_unreact INTEGER NOT NULL DEFAULT 1,
     anti_raid_enabled INTEGER NOT NULL DEFAULT 0,
     anti_raid_alert_channel_id TEXT NOT NULL DEFAULT '',
     anti_raid_join_threshold INTEGER NOT NULL DEFAULT 8,
-    anti_raid_window_seconds INTEGER NOT NULL DEFAULT 20,
+    anti_raid_join_burst_limit INTEGER NOT NULL DEFAULT 8,
+    anti_raid_window_seconds INTEGER NOT NULL DEFAULT 45,
     anti_raid_lockdown_minutes INTEGER NOT NULL DEFAULT 10,
+    anti_raid_action TEXT NOT NULL DEFAULT 'flag',
     automations_enabled INTEGER NOT NULL DEFAULT 0,
     automations_log_channel_id TEXT NOT NULL DEFAULT '',
     automations_trigger TEXT NOT NULL DEFAULT 'member_join',
@@ -114,6 +118,10 @@ db.exec(`
     applications_reviewer_role_id TEXT NOT NULL DEFAULT '',
     applications_form_title TEXT NOT NULL DEFAULT 'Staff Application',
     applications_questions TEXT NOT NULL DEFAULT 'Why do you want to help this server?\nWhat timezone are you in?',
+    ai_tools_enabled INTEGER NOT NULL DEFAULT 0,
+    ai_tools_channel_id TEXT NOT NULL DEFAULT '',
+    ai_tools_persona TEXT NOT NULL DEFAULT 'Helpful and concise community copilot',
+    ai_tools_require_mention INTEGER NOT NULL DEFAULT 1,
     updated_by_user_id TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
@@ -206,13 +214,19 @@ ensureColumn("leveling_level_up_message", "TEXT NOT NULL DEFAULT 'GG {mention}, 
 ensureColumn("reaction_roles_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("reaction_roles_channel_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("reaction_roles_message_id", "TEXT NOT NULL DEFAULT ''");
-ensureColumn("reaction_roles_max_per_member", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn(
+  "reaction_roles_prompt",
+  "TEXT NOT NULL DEFAULT 'Pick your roles from the reaction menu below.'",
+);
+ensureColumn("reaction_roles_max_per_member", "INTEGER NOT NULL DEFAULT 3");
 ensureColumn("reaction_roles_remove_on_unreact", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("anti_raid_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("anti_raid_alert_channel_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("anti_raid_join_threshold", "INTEGER NOT NULL DEFAULT 8");
-ensureColumn("anti_raid_window_seconds", "INTEGER NOT NULL DEFAULT 20");
+ensureColumn("anti_raid_join_burst_limit", "INTEGER NOT NULL DEFAULT 8");
+ensureColumn("anti_raid_window_seconds", "INTEGER NOT NULL DEFAULT 45");
 ensureColumn("anti_raid_lockdown_minutes", "INTEGER NOT NULL DEFAULT 10");
+ensureColumn("anti_raid_action", "TEXT NOT NULL DEFAULT 'flag'");
 ensureColumn("automations_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("automations_log_channel_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("automations_trigger", "TEXT NOT NULL DEFAULT 'member_join'");
@@ -234,6 +248,13 @@ ensureColumn(
   "applications_questions",
   "TEXT NOT NULL DEFAULT 'Why do you want to help this server?\nWhat timezone are you in?'",
 );
+ensureColumn("ai_tools_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("ai_tools_channel_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn(
+  "ai_tools_persona",
+  "TEXT NOT NULL DEFAULT 'Helpful and concise community copilot'",
+);
+ensureColumn("ai_tools_require_mention", "INTEGER NOT NULL DEFAULT 1");
 
 const defaults = {
   pingResponse: "Pong.",
@@ -265,6 +286,7 @@ const defaults = {
   ...automationDefaults,
   ...modmailDefaults,
   ...applicationDefaults,
+  ...aiToolsDefaults,
 };
 
 function getGuildSettings(guildId) {
@@ -341,13 +363,31 @@ function getGuildSettings(guildId) {
     reactionRolesEnabled: Boolean(row.reaction_roles_enabled),
     reactionRolesChannelId: row.reaction_roles_channel_id,
     reactionRolesMessageId: row.reaction_roles_message_id,
-    reactionRolesMaxPerMember: normalizeInteger(row.reaction_roles_max_per_member, 1),
+    reactionRolesPrompt: row.reaction_roles_prompt || reactionRoleDefaults.reactionRolesPrompt,
+    reactionRolesMaxPerMember: normalizeInteger(
+      row.reaction_roles_max_per_member,
+      reactionRoleDefaults.reactionRolesMaxPerMember,
+    ),
     reactionRolesRemoveOnUnreact: Boolean(row.reaction_roles_remove_on_unreact),
     antiRaidEnabled: Boolean(row.anti_raid_enabled),
     antiRaidAlertChannelId: row.anti_raid_alert_channel_id,
-    antiRaidJoinThreshold: normalizeInteger(row.anti_raid_join_threshold, 8),
-    antiRaidWindowSeconds: normalizeInteger(row.anti_raid_window_seconds, 20),
-    antiRaidLockdownMinutes: normalizeInteger(row.anti_raid_lockdown_minutes, 10),
+    antiRaidJoinThreshold: normalizeInteger(
+      row.anti_raid_join_threshold,
+      antiRaidDefaults.antiRaidJoinThreshold,
+    ),
+    antiRaidJoinBurstLimit: normalizeInteger(
+      row.anti_raid_join_burst_limit,
+      antiRaidDefaults.antiRaidJoinBurstLimit,
+    ),
+    antiRaidWindowSeconds: normalizeInteger(
+      row.anti_raid_window_seconds,
+      antiRaidDefaults.antiRaidWindowSeconds,
+    ),
+    antiRaidLockdownMinutes: normalizeInteger(
+      row.anti_raid_lockdown_minutes,
+      antiRaidDefaults.antiRaidLockdownMinutes,
+    ),
+    antiRaidAction: row.anti_raid_action || antiRaidDefaults.antiRaidAction,
     automationsEnabled: Boolean(row.automations_enabled),
     automationsLogChannelId: row.automations_log_channel_id,
     automationsTrigger: row.automations_trigger || "member_join",
@@ -365,6 +405,13 @@ function getGuildSettings(guildId) {
     applicationsQuestions:
       row.applications_questions ||
       "Why do you want to help this server?\nWhat timezone are you in?",
+    aiToolsEnabled: Boolean(row.ai_tools_enabled),
+    aiToolsChannelId: row.ai_tools_channel_id,
+    aiToolsPersona: row.ai_tools_persona || aiToolsDefaults.aiToolsPersona,
+    aiToolsRequireMention:
+      row.ai_tools_require_mention == null
+        ? aiToolsDefaults.aiToolsRequireMention
+        : Boolean(row.ai_tools_require_mention),
     updatedAt: row.updated_at,
     updatedByUserId: row.updated_by_user_id,
   };
@@ -433,13 +480,16 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
     settings.reactionRolesEnabled ? 1 : 0,
     settings.reactionRolesChannelId,
     settings.reactionRolesMessageId,
+    settings.reactionRolesPrompt,
     settings.reactionRolesMaxPerMember,
     settings.reactionRolesRemoveOnUnreact ? 1 : 0,
     settings.antiRaidEnabled ? 1 : 0,
     settings.antiRaidAlertChannelId,
     settings.antiRaidJoinThreshold,
+    settings.antiRaidJoinBurstLimit,
     settings.antiRaidWindowSeconds,
     settings.antiRaidLockdownMinutes,
+    settings.antiRaidAction,
     settings.automationsEnabled ? 1 : 0,
     settings.automationsLogChannelId,
     settings.automationsTrigger,
@@ -455,6 +505,10 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
     settings.applicationsReviewerRoleId,
     settings.applicationsFormTitle,
     settings.applicationsQuestions,
+    settings.aiToolsEnabled ? 1 : 0,
+    settings.aiToolsChannelId,
+    settings.aiToolsPersona,
+    settings.aiToolsRequireMention ? 1 : 0,
     updatedByUserId,
   ];
 
@@ -521,13 +575,16 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       reaction_roles_enabled,
       reaction_roles_channel_id,
       reaction_roles_message_id,
+      reaction_roles_prompt,
       reaction_roles_max_per_member,
       reaction_roles_remove_on_unreact,
       anti_raid_enabled,
       anti_raid_alert_channel_id,
       anti_raid_join_threshold,
+      anti_raid_join_burst_limit,
       anti_raid_window_seconds,
       anti_raid_lockdown_minutes,
+      anti_raid_action,
       automations_enabled,
       automations_log_channel_id,
       automations_trigger,
@@ -543,6 +600,10 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       applications_reviewer_role_id,
       applications_form_title,
       applications_questions,
+      ai_tools_enabled,
+      ai_tools_channel_id,
+      ai_tools_persona,
+      ai_tools_require_mention,
       updated_by_user_id,
       updated_at
     ) VALUES (${values.map(() => "?").join(", ")}, CURRENT_TIMESTAMP)
@@ -607,13 +668,16 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       reaction_roles_enabled = excluded.reaction_roles_enabled,
       reaction_roles_channel_id = excluded.reaction_roles_channel_id,
       reaction_roles_message_id = excluded.reaction_roles_message_id,
+      reaction_roles_prompt = excluded.reaction_roles_prompt,
       reaction_roles_max_per_member = excluded.reaction_roles_max_per_member,
       reaction_roles_remove_on_unreact = excluded.reaction_roles_remove_on_unreact,
       anti_raid_enabled = excluded.anti_raid_enabled,
       anti_raid_alert_channel_id = excluded.anti_raid_alert_channel_id,
       anti_raid_join_threshold = excluded.anti_raid_join_threshold,
+      anti_raid_join_burst_limit = excluded.anti_raid_join_burst_limit,
       anti_raid_window_seconds = excluded.anti_raid_window_seconds,
       anti_raid_lockdown_minutes = excluded.anti_raid_lockdown_minutes,
+      anti_raid_action = excluded.anti_raid_action,
       automations_enabled = excluded.automations_enabled,
       automations_log_channel_id = excluded.automations_log_channel_id,
       automations_trigger = excluded.automations_trigger,
@@ -629,6 +693,10 @@ function saveGuildSettings(guildId, settings, updatedByUserId) {
       applications_reviewer_role_id = excluded.applications_reviewer_role_id,
       applications_form_title = excluded.applications_form_title,
       applications_questions = excluded.applications_questions,
+      ai_tools_enabled = excluded.ai_tools_enabled,
+      ai_tools_channel_id = excluded.ai_tools_channel_id,
+      ai_tools_persona = excluded.ai_tools_persona,
+      ai_tools_require_mention = excluded.ai_tools_require_mention,
       updated_by_user_id = excluded.updated_by_user_id,
       updated_at = CURRENT_TIMESTAMP
   `).run(...values);
