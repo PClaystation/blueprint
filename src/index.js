@@ -18,9 +18,13 @@ const {
 const config = require("./config");
 const {
   renderAuthComplete,
+  renderContactPage,
   renderDashboard,
   renderGuildSettings,
   renderHome,
+  renderNotFoundPage,
+  renderPrivacyPage,
+  renderTermsPage,
 } = require("./render");
 const {
   buildCountdownAlertMessage,
@@ -222,6 +226,9 @@ app.use("/images", express.static(path.join(process.cwd(), "images")));
 app.get("/favicon.ico", (request, response) => {
   response.sendFile(path.join(process.cwd(), "images", "blueprint-pfp2.png"));
 });
+app.get("/favicon.png", (request, response) => {
+  response.sendFile(path.join(process.cwd(), "images", "blueprint-pfp2.png"));
+});
 app.use(
   "/auth-popup",
   express.static(path.resolve(process.cwd(), "..", "Dashboard", "login popup")),
@@ -229,6 +236,16 @@ app.use(
 
 app.use((request, response, next) => {
   response.locals.sessionUser = request.session.user || null;
+  applySecurityHeaders(response);
+
+  if (
+    request.path.startsWith("/dashboard") ||
+    request.path.startsWith("/auth/") ||
+    request.path === "/logout"
+  ) {
+    response.set("X-Robots-Tag", "noindex, nofollow");
+  }
+
   next();
 });
 
@@ -239,6 +256,92 @@ app.get("/", (request, response) => {
       sessionUser: response.locals.sessionUser,
     }),
   );
+});
+
+app.get("/privacy", (request, response) => {
+  response.send(
+    renderPrivacyPage({
+      authConfig: getAuthClientConfig(),
+      sessionUser: response.locals.sessionUser,
+    }),
+  );
+});
+
+app.get("/terms", (request, response) => {
+  response.send(
+    renderTermsPage({
+      authConfig: getAuthClientConfig(),
+      sessionUser: response.locals.sessionUser,
+    }),
+  );
+});
+
+app.get("/contact", (request, response) => {
+  response.send(
+    renderContactPage({
+      authConfig: getAuthClientConfig(),
+      sessionUser: response.locals.sessionUser,
+    }),
+  );
+});
+
+app.get("/robots.txt", (request, response) => {
+  response.type("text/plain").send([
+    "User-agent: *",
+    "Allow: /",
+    "Disallow: /dashboard",
+    "Disallow: /auth",
+    "Disallow: /logout",
+    `Sitemap: ${config.baseUrl}/sitemap.xml`,
+    "",
+  ].join("\n"));
+});
+
+app.get("/sitemap.xml", (request, response) => {
+  const lastModified = getSitemapLastModifiedDate();
+  const pages = [
+    { path: "/", priority: "1.0", changefreq: "weekly", lastmod: lastModified },
+    { path: "/privacy", priority: "0.4", changefreq: "yearly", lastmod: lastModified },
+    { path: "/terms", priority: "0.4", changefreq: "yearly", lastmod: lastModified },
+    { path: "/contact", priority: "0.3", changefreq: "yearly", lastmod: lastModified },
+  ];
+  const body = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${pages
+  .map(
+    (page) => `  <url>
+    <loc>${escapeXml(`${config.baseUrl}${page.path}`)}</loc>
+    <lastmod>${page.lastmod}</lastmod>
+    <changefreq>${page.changefreq}</changefreq>
+    <priority>${page.priority}</priority>
+  </url>`,
+  )
+  .join("\n")}
+</urlset>`;
+  response.type("application/xml").send(body);
+});
+
+app.get(["/security.txt", "/.well-known/security.txt"], (request, response) => {
+  response.type("text/plain").send([
+    `Contact: ${config.baseUrl}/contact`,
+    `Expires: ${getSecurityTextExpiryDate()}`,
+    "Preferred-Languages: en",
+    `Canonical: ${config.baseUrl}/.well-known/security.txt`,
+    `Policy: ${config.baseUrl}/terms`,
+    "",
+  ].join("\n"));
+});
+
+app.get("/site.webmanifest", (request, response) => {
+  response.type("application/manifest+json").send(buildSiteManifest());
+});
+
+app.get("/manifest.json", (request, response) => {
+  response.type("application/manifest+json").send(buildSiteManifest());
+});
+
+app.get("/data.json", (request, response) => {
+  response.json(buildSiteData());
 });
 
 app.get("/auth/complete", (request, response) => {
@@ -503,6 +606,15 @@ app.post("/dashboard/:guildId/countdown/remove", requireAuthPage, async (request
   } catch (error) {
     next(error);
   }
+});
+
+app.use((request, response) => {
+  response.status(404).send(
+    renderNotFoundPage({
+      authConfig: getAuthClientConfig(),
+      sessionUser: response.locals.sessionUser,
+    }),
+  );
 });
 
 app.use((error, request, response, next) => {
@@ -973,6 +1085,94 @@ function requireAuthPage(request, response, next) {
   }
 
   next();
+}
+
+function applySecurityHeaders(response) {
+  response.set({
+    "Content-Security-Policy": [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "font-src 'self' data:",
+      "frame-ancestors 'none'",
+      "img-src 'self' data: https:",
+      "object-src 'none'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "form-action 'self'",
+      "connect-src 'self' https:",
+    ].join("; "),
+    "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+  });
+
+  if (config.baseUrl.startsWith("https://")) {
+    response.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function getSecurityTextExpiryDate() {
+  const nextYear = new Date();
+  nextYear.setUTCFullYear(nextYear.getUTCFullYear() + 1);
+  return nextYear.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+function getSitemapLastModifiedDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function buildSiteManifest() {
+  return {
+    background_color: "#020617",
+    description:
+      "Blueprint is a modular, dashboard-first Discord control center for managing server features.",
+    display: "standalone",
+    icons: [
+      {
+        sizes: "192x192",
+        src: "/favicon.png",
+        type: "image/png",
+      },
+      {
+        sizes: "512x512",
+        src: "/images/blueprint-pfp2.png",
+        type: "image/png",
+      },
+    ],
+    name: "Blueprint",
+    short_name: "Blueprint",
+    start_url: "/",
+    theme_color: "#0f172a",
+  };
+}
+
+function buildSiteData() {
+  return {
+    description:
+      "Blueprint is a modular, dashboard-first Discord bot control center for moderation, automations, welcome flows, tickets, and server operations.",
+    endpoints: {
+      contact: "/contact",
+      privacy: "/privacy",
+      robots: "/robots.txt",
+      security: "/.well-known/security.txt",
+      sitemap: "/sitemap.xml",
+      terms: "/terms",
+      webmanifest: "/manifest.json",
+    },
+    name: "Blueprint",
+    type: "website",
+    url: config.baseUrl,
+  };
 }
 
 function requireAuthJson(request, response, next) {

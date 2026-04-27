@@ -118,7 +118,6 @@ Blueprint should feel premium and modern.
 
 The dashboard should be:
 - clean
-- dark by default
 - minimal
 - not cluttered
 - easy to understand

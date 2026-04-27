@@ -1,72 +1,107 @@
-# Blueprint Discord Bot + Control Center
+# Blueprint
 
-This repo runs two things in one Node process:
+Blueprint is a modular, dashboard-first Discord bot and control center.
 
-- a Discord slash-command bot
-- a web control center for moderators
+This repository runs two connected surfaces in one Node process:
 
-The website now uses the Continental ID auth system from the Dashboard project. Users sign in with that account system, and Blueprint reads the Discord account linked to that Continental ID profile. Server access is then derived from guilds where:
+- the Discord bot
+- the Blueprint website and dashboard
 
-- the bot is already installed
-- the linked Discord account is a member
-- that member has `Manage Server` or `Administrator`
+The product goal is a real server-control platform, not a pile of commands. Each major feature should feel like an installable module with its own settings, validation, permissions, and dashboard UI.
+
+## Website Essentials
+
+The web layer now includes the baseline public-site files and routes expected from a production website:
+
+- `/privacy`
+- `/terms`
+- `/contact`
+- `/robots.txt`
+- `/sitemap.xml`
+- `/security.txt`
+- `/.well-known/security.txt`
+- `/site.webmanifest`
+- a custom 404 page
+- SEO and social metadata in the shared layout
+
+These sit alongside the authenticated dashboard rather than being separate static mock pages.
+
+## Core Product Shape
+
+Blueprint is designed around:
+
+- modular server features
+- dashboard-first configuration
+- per-server settings
+- configurable enable/disable states
+- clean operator UX
+
+Examples of managed modules in this repo include:
+
+- welcome flows
+- auto roles
+- countdowns
+- audit log
+- auto moderation
+- announcements
+- starboard
+- suggestions
+- reaction roles
+- tickets
+- leveling
+- anti-raid
+- automations
+- modmail
+- applications
+- AI tools
 
 ## Slash Commands
+
+Current slash commands:
 
 - `/ping`
 - `/hello`
 - `/dashboard`
 - `/countdown`
+- `/announce`
+- `/suggest`
 
-## What The Dashboard Controls
+Complex setup belongs in the website, not in oversized slash-command trees.
 
-Each managed server can configure:
+## Access Model
 
-- the `/ping` reply text
-- the `/hello` template
-- whether `/hello` is enabled
-- a shared `/countdown` event with a target date
-- countdown mode using either calendar days or selected weekdays only
-- excluded dates that should be skipped for school breaks, holidays, and other off-days
-- optional daily countdown alerts with a configurable channel and UTC send time
-- a configurable highlights feed that mirrors starred posts into one showcase channel
-- a saved accent color for that server
+Blueprint uses the Continental ID auth flow for website access.
 
-## Setup
+Users sign in with Continental ID, Blueprint reads the linked Discord identity from that authenticated profile, and the dashboard only exposes servers where:
+
+- the bot is installed
+- the linked Discord account is a member
+- that member has `Manage Server` or `Administrator`
+
+## Local Development
 
 1. Create a Discord application and bot in the [Discord Developer Portal](https://discord.com/developers/applications).
-2. In the bot settings, enable the `Server Members Intent`.
+2. Enable the `Server Members Intent` for the bot.
 3. Make sure the Dashboard auth backend is running and its Discord provider is configured.
-4. In the Dashboard backend, the Blueprint origin must be allowed for OAuth app redirects.
-   For local development on `localhost`, the Dashboard popup already treats local origins as trusted.
-5. Copy these values:
-   - bot token
-   - application client ID
-   - a test server ID if you want command registration to be immediate
-   - the Blueprint session secret
-   - the Dashboard auth API base URL
-   - the login popup URL exposed by the Dashboard auth system
-6. Copy `.env.example` to `.env`.
-7. Fill in the environment variables.
-8. Install dependencies:
+4. Allow the Blueprint origin in the Dashboard auth backend redirect settings.
+5. Install dependencies:
 
 ```bash
 npm install
 ```
 
-9. Start the app:
+6. Set the required environment variables.
+7. Start the app:
 
 ```bash
 npm start
 ```
 
-10. Open the dashboard:
+8. Open:
 
 ```text
 http://localhost:3000
 ```
-
-The dashboard's "Add bot to a server" link requests the `Administrator` permission by default.
 
 ## Required Environment Variables
 
@@ -87,13 +122,29 @@ DISCORD_GUILD_ID=
 AUTH_TRUSTED_LOGIN_ORIGINS=
 ```
 
-## Notes
+## Storage
 
-- If `DISCORD_GUILD_ID` is set, slash commands register only in that server and appear quickly.
-- If `DISCORD_GUILD_ID` is omitted, slash commands register globally and can take longer to appear.
-- The bot needs `Server Members Intent` enabled in the Discord Developer Portal because the dashboard verifies whether the linked Discord account can manage each installed server.
-- Website login is no longer handled through a separate Discord OAuth flow in this repo.
-- Blueprint depends on the authenticated Continental ID user having a linked Discord identity in Dashboard.
-- The Dashboard auth API must expose the linked Discord provider user ID for this integration to resolve moderator access correctly.
-- Settings are stored in `data/control-center.db`.
-- `express-session` uses the default memory store, which is fine for a simple local prototype but not for production.
+- Guild configuration is stored in `data/control-center.db`.
+- Session handling uses `express-session`.
+- The current default session store is acceptable for local development, but should be replaced for real production deployment.
+
+## Testing
+
+Run the current automated tests with:
+
+```bash
+npm test
+```
+
+When shipping module work, also verify:
+
+- module enable/disable behavior
+- invalid setting handling
+- permission checks
+- mobile dashboard usability
+- sane defaults on a fresh server
+- behavior on a heavily customized server
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for reporting guidance. The running app also publishes a machine-readable security contact at `/security.txt`.

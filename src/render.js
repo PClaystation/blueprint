@@ -15,6 +15,7 @@ const {
   renderModuleCard,
   renderModuleFacts,
 } = require("./html");
+const config = require("./config");
 const { renderAnnouncementModuleCard } = require("./modules/announcements");
 const { renderAiToolsModuleCard } = require("./modules/ai-tools");
 const { renderAntiRaidModuleCard } = require("./modules/anti-raid");
@@ -35,10 +36,29 @@ const { renderApplicationsModuleCard } = require("./modules/applications");
 function renderLayout({
   authConfig,
   body,
+  currentPath = "/",
+  description = "Blueprint is a modular, dashboard-first Discord control center for configuring and operating servers cleanly.",
+  ogType = "website",
+  noindex = false,
+  pageHeading = "",
+  schema = [],
   sessionUser,
   title,
 }) {
   const fallbackAvatar = "/images/C2-new-white.png";
+  const canonicalUrl = buildCanonicalUrl(currentPath);
+  const socialImageUrl = buildCanonicalUrl("/images/Blueprint-banner.png");
+  const fullTitle = title.includes("Blueprint") ? title : `${title} | Blueprint`;
+  const schemaMarkup = renderStructuredData([
+    buildOrganizationSchema(),
+    buildWebPageSchema({
+      currentPath,
+      description,
+      pageHeading,
+      title: fullTitle,
+    }),
+    ...schema,
+  ]);
   const authButton = sessionUser
     ? `<a class="button button-ghost" href="/logout">Log out</a>`
     : `<button class="button button-ghost" id="login-button" type="button">Log in</button>`;
@@ -54,17 +74,63 @@ function renderLayout({
       </div>`
     : "";
 
+  const topbarNav = `
+    <nav class="topbar-nav" aria-label="Primary">
+      <a href="/">Home</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="/contact">Contact</a>
+    </nav>
+  `;
+
+  const footer = `
+    <footer class="site-footer">
+      <div class="site-footer-copy">
+        <strong>Blueprint</strong>
+        <p>
+          Modular Discord server control with a dashboard-first workflow, clearer setup paths,
+          and per-server configuration that stays easy to manage.
+        </p>
+      </div>
+      <nav class="site-footer-nav" aria-label="Footer">
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms of Service</a>
+        <a href="/contact">Contact</a>
+        <a href="/security.txt">Security</a>
+      </nav>
+    </footer>
+  `;
+
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0f172a" />
-    <title>${escapeHtml(title)}</title>
+    <meta name="description" content="${escapeHtml(description)}" />
+    <meta name="robots" content="${noindex ? "noindex, nofollow" : "index, follow"}" />
+    <meta name="author" content="Continental" />
+    <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />
+    <title>${escapeHtml(fullTitle)}</title>
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" href="/images/blueprint-pfp2.png" />
     <link rel="apple-touch-icon" href="/images/blueprint-pfp2.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta property="og:type" content="${escapeHtml(ogType)}" />
+    <meta property="og:site_name" content="Blueprint" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="${escapeHtml(fullTitle)}" />
+    <meta property="og:description" content="${escapeHtml(description)}" />
+    <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
+    <meta property="og:image" content="${escapeHtml(socialImageUrl)}" />
+    <meta property="og:image:alt" content="Blueprint control center preview" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeHtml(fullTitle)}" />
+    <meta name="twitter:description" content="${escapeHtml(description)}" />
+    <meta name="twitter:image" content="${escapeHtml(socialImageUrl)}" />
+    <meta name="twitter:image:alt" content="Blueprint control center preview" />
     <link rel="stylesheet" href="/styles.css" />
+    ${schemaMarkup}
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -87,12 +153,14 @@ function renderLayout({
             <img src="/images/Continental-nobg-white.png" alt="Continental" />
           </div>
         </div>
+        ${topbarNav}
         <div class="topbar-actions">
           ${authMeta}
           ${authButton}
         </div>
       </header>
       ${body}
+      ${footer}
     </div>
     <script>
       window.BLUEPRINT_AUTH = ${JSON.stringify(authConfig)};
@@ -137,6 +205,12 @@ function renderHome({ authConfig, sessionUser }) {
             <p class="hero-metric-copy">Spot unfinished modules quickly, jump into a server, and continue setup without guesswork.</p>
           </article>
         </div>
+        <div class="hero-search-copy">
+          <p>
+            Blueprint is a Discord server management website for teams that want modular tools,
+            cleaner setup, and a premium dashboard instead of command-heavy administration.
+          </p>
+        </div>
       </section>
       <section class="panel brand-panel">
         <div class="brand-panel-header">
@@ -174,14 +248,51 @@ function renderHome({ authConfig, sessionUser }) {
           </section>
         </div>
       </section>
+      <section class="settings-card content-card home-section">
+        <p class="eyebrow">Core capabilities</p>
+        <h2>One control center, many installable Discord modules.</h2>
+        <p>
+          Blueprint is built for communities that need structured Discord bot management without
+          forcing every change through slash commands. Modules can be enabled per server, configured
+          independently, and left hidden when unused.
+        </p>
+        <div class="info-card-grid">
+          <article class="info-card">
+            <h3>Moderation and safety</h3>
+            <p>Configure audit logs, anti-raid rules, join screening, automod, and staff workflows from the dashboard.</p>
+          </article>
+          <article class="info-card">
+            <h3>Community operations</h3>
+            <p>Manage welcome flows, tickets, reaction roles, suggestions, announcements, applications, and modmail.</p>
+          </article>
+          <article class="info-card">
+            <h3>Server customization</h3>
+            <p>Keep each guild separate with its own channels, roles, permissions, messages, and module states.</p>
+          </article>
+        </div>
+      </section>
+      <section class="settings-card content-card home-section">
+        <p class="eyebrow">Why it ranks</p>
+        <h2>A public website layer on top of an authenticated dashboard.</h2>
+        <p>
+          The public pages explain what Blueprint is, how it works, and how access is handled.
+          Private dashboard pages stay excluded from search indexing, while the public pages carry
+          the metadata, crawl files, and structured content needed for discoverability.
+        </p>
+      </section>
     </main>
   `;
 
   return renderLayout({
     authConfig,
     body,
+    currentPath: "/",
+    description:
+      "Blueprint is a modular Discord bot control center with a dashboard-first workflow for moderation, automations, welcome flows, tickets, and server operations.",
+    pageHeading: "Run Blueprint from one polished server dashboard.",
+    schema: [buildSoftwareApplicationSchema()],
     sessionUser,
-    title: "Blueprint Control Center",
+    title: "Discord Server Control Center",
   });
 }
 
@@ -355,6 +466,10 @@ function renderDashboard({
   return renderLayout({
     authConfig,
     body,
+    currentPath: "/dashboard",
+    description: "Review installed servers, find modules that still need setup, and jump back into Blueprint quickly.",
+    noindex: true,
+    pageHeading: "Choose a server",
     sessionUser,
     title: "Server Dashboard",
   });
@@ -1074,6 +1189,10 @@ function renderGuildSettings({
   return renderLayout({
     authConfig,
     body,
+    currentPath: `/dashboard/${guild.id}`,
+    description: `Configure modules, automation, moderation, and server workflows for ${guild.name} in Blueprint.`,
+    noindex: true,
+    pageHeading: guild.name,
     sessionUser,
     title: `${guild.name} Settings`,
   });
@@ -1102,17 +1221,304 @@ function renderAuthComplete({ authConfig, returnTo, sessionUser }) {
   return renderLayout({
     authConfig,
     body,
+    currentPath: "/auth/complete",
+    description: "Complete Blueprint sign-in and return to the control center.",
+    noindex: true,
+    pageHeading: "Finishing sign-in",
     sessionUser,
     title: "Complete Sign-In",
   });
 }
 
+function renderLegalPage({
+  authConfig,
+  currentPath,
+  description,
+  sections,
+  sessionUser,
+  title,
+}) {
+  const body = `
+    <main class="content-page" id="main-content">
+      <section class="settings-card content-hero">
+        <div>
+          <p class="eyebrow">Website information</p>
+          <h1>${escapeHtml(title)}</h1>
+          <p class="section-copy">${escapeHtml(description)}</p>
+        </div>
+      </section>
+      <section class="content-stack">
+        ${sections
+          .map(
+            (section) => `
+              <article class="settings-card content-card">
+                <h2>${escapeHtml(section.title)}</h2>
+                ${section.paragraphs
+                  .map((paragraph) => `<p>${paragraph}</p>`)
+                  .join("")}
+              </article>
+            `,
+          )
+          .join("")}
+      </section>
+    </main>
+  `;
+
+  return renderLayout({
+    authConfig,
+    body,
+    currentPath,
+    description,
+    pageHeading: title,
+    schema: [buildBreadcrumbSchema(currentPath, title)],
+    sessionUser,
+    title,
+  });
+}
+
+function renderPrivacyPage({ authConfig, sessionUser }) {
+  return renderLegalPage({
+    authConfig,
+    currentPath: "/privacy",
+    description:
+      "How Blueprint handles authentication, server configuration data, and basic website usage data.",
+    sections: [
+      {
+        title: "What Blueprint stores",
+        paragraphs: [
+          "Blueprint stores the minimum service data needed to operate the website and Discord bot. That includes your authenticated website session, your linked Discord account identifier when provided by the Continental ID system, and per-server configuration saved through the dashboard.",
+          "Server settings can include channel IDs, role IDs, module toggles, message templates, and other configuration values required to run enabled modules.",
+        ],
+      },
+      {
+        title: "How data is used",
+        paragraphs: [
+          "This data is used to sign you in, determine which Discord servers you are allowed to manage, and apply the settings you save for each server.",
+          "Blueprint does not need broad personal-profile data to perform its core workflow. It uses only the fields required to match authenticated users to Discord access and persist server configuration.",
+        ],
+      },
+      {
+        title: "Cookies and sessions",
+        paragraphs: [
+          "Blueprint uses a session cookie so the dashboard can keep you signed in between requests. The cookie is used for authentication and basic session integrity, not for advertising.",
+        ],
+      },
+      {
+        title: "Sharing and retention",
+        paragraphs: [
+          "Blueprint configuration data is used internally to operate the service and is not intended for resale or marketing use. Data may be retained as long as it is needed to provide the bot, maintain configuration history, or satisfy operational and security needs.",
+        ],
+      },
+      {
+        title: "Your responsibilities",
+        paragraphs: [
+          "Only save data to Blueprint that is appropriate for your server configuration workflows. Avoid placing sensitive secrets or private personal information into free-text settings unless the feature explicitly requires it and your organization approves that usage.",
+        ],
+      },
+    ],
+    sessionUser,
+    title: "Privacy Policy",
+  });
+}
+
+function renderTermsPage({ authConfig, sessionUser }) {
+  return renderLegalPage({
+    authConfig,
+    currentPath: "/terms",
+    description:
+      "The operating terms for using the Blueprint website, dashboard, and connected Discord bot.",
+    sections: [
+      {
+        title: "Service scope",
+        paragraphs: [
+          "Blueprint provides a dashboard-first control center for managing modular Discord bot features on a per-server basis. Access to some functionality depends on a valid sign-in session and the permissions of your linked Discord account.",
+        ],
+      },
+      {
+        title: "Acceptable use",
+        paragraphs: [
+          "You may use Blueprint only for legitimate server-management purposes and only in servers where you are authorized to make configuration changes. You must not attempt to bypass permissions, abuse automation features, interfere with service availability, or use Blueprint in ways that violate Discord rules or applicable law.",
+        ],
+      },
+      {
+        title: "Configuration responsibility",
+        paragraphs: [
+          "Server administrators are responsible for the settings they enable, the roles and channels they target, and the messages or automations they configure. Because Blueprint is modular, features should be reviewed before enabling them in live communities.",
+        ],
+      },
+      {
+        title: "Availability and changes",
+        paragraphs: [
+          "Blueprint may change, improve, limit, or remove features over time. Availability is not guaranteed, and some parts of the service may depend on third-party systems such as Discord or the external authentication provider.",
+        ],
+      },
+      {
+        title: "No warranty",
+        paragraphs: [
+          "Blueprint is provided on an as-available basis. Operators should test changes before relying on them in production communities, especially for moderation, automation, and role-management modules.",
+        ],
+      },
+    ],
+    sessionUser,
+    title: "Terms of Service",
+  });
+}
+
+function renderContactPage({ authConfig, sessionUser }) {
+  return renderLegalPage({
+    authConfig,
+    currentPath: "/contact",
+    description:
+      "How to reach the team responsible for operating Blueprint and where to send security-related reports.",
+    sections: [
+      {
+        title: "General support",
+        paragraphs: [
+          "For access issues, configuration questions, or bug reports, contact the team or organization channel that provided your Blueprint access. Include the affected server name, the module involved, and the steps needed to reproduce the problem.",
+        ],
+      },
+      {
+        title: "Security reporting",
+        paragraphs: [
+          "If you discover a security issue, report it privately and include enough detail for reproduction, impact assessment, and validation. Use the published security contact file at <code>/security.txt</code> as the canonical reporting entry point for this deployment.",
+        ],
+      },
+      {
+        title: "Website endpoints",
+        paragraphs: [
+          "This deployment also publishes standard website essentials including <code>/robots.txt</code>, <code>/sitemap.xml</code>, and <code>/site.webmanifest</code> so the public site behaves like a complete production website rather than a bare dashboard shell.",
+        ],
+      },
+    ],
+    sessionUser,
+    title: "Contact",
+  });
+}
+
+function renderNotFoundPage({ authConfig, sessionUser }) {
+  const body = `
+    <main class="center-page" id="main-content">
+      <section class="center-panel">
+        <p class="eyebrow">404</p>
+        <h1>Page not found</h1>
+        <p class="lede">
+          The page you requested does not exist on this Blueprint deployment.
+        </p>
+        <div class="hero-actions">
+          <a class="button" href="/">Back home</a>
+          <a class="button button-ghost" href="/dashboard">Open dashboard</a>
+        </div>
+      </section>
+    </main>
+  `;
+
+  return renderLayout({
+    authConfig,
+    body,
+    currentPath: "/404",
+    description: "The requested Blueprint page could not be found.",
+    noindex: true,
+    pageHeading: "Page not found",
+    sessionUser,
+    title: "Page Not Found",
+  });
+}
+
 module.exports = {
   renderAuthComplete,
+  renderContactPage,
   renderDashboard,
   renderGuildSettings,
   renderHome,
+  renderNotFoundPage,
+  renderPrivacyPage,
+  renderTermsPage,
 };
+
+function buildCanonicalUrl(pathname) {
+  const trimmedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return `${config.baseUrl}${trimmedPath}`;
+}
+
+function renderStructuredData(entries) {
+  const filtered = entries.filter(Boolean);
+  if (!filtered.length) {
+    return "";
+  }
+
+  return filtered
+    .map(
+      (entry) =>
+        `<script type="application/ld+json">${JSON.stringify(entry)}</script>`,
+    )
+    .join("\n    ");
+}
+
+function buildOrganizationSchema() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    logo: buildCanonicalUrl("/images/blueprint-pfp2.png"),
+    name: "Blueprint",
+    url: config.baseUrl,
+  };
+}
+
+function buildWebPageSchema({ currentPath, description, pageHeading, title }) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    description,
+    headline: pageHeading || title,
+    name: title,
+    url: buildCanonicalUrl(currentPath),
+  };
+}
+
+function buildSoftwareApplicationSchema() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    applicationCategory: "BusinessApplication",
+    description:
+      "Blueprint is a modular, dashboard-first Discord bot control center for moderation, community operations, and server configuration.",
+    image: buildCanonicalUrl("/images/Blueprint-banner.png"),
+    name: "Blueprint",
+    operatingSystem: "Web",
+    provider: {
+      "@type": "Organization",
+      name: "Continental",
+    },
+    url: config.baseUrl,
+  };
+}
+
+function buildBreadcrumbSchema(currentPath, title) {
+  const path = currentPath === "/" ? [] : currentPath.split("/").filter(Boolean);
+  const items = [
+    {
+      "@type": "ListItem",
+      item: config.baseUrl,
+      name: "Home",
+      position: 1,
+    },
+  ];
+
+  if (path.length > 0) {
+    items.push({
+      "@type": "ListItem",
+      item: buildCanonicalUrl(currentPath),
+      name: title,
+      position: 2,
+    });
+  }
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items,
+  };
+}
 
 const MODULE_SECTION_IDS = {
   announcements: "module-announcements",

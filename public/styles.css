@@ -66,6 +66,7 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
   margin-bottom: 40px;
 }
 
@@ -160,6 +161,29 @@ code {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.topbar-nav,
+.site-footer-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.topbar-nav a,
+.site-footer-nav a {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition: color 140ms ease;
+}
+
+.topbar-nav a:hover,
+.site-footer-nav a:hover,
+.topbar-nav a:focus-visible,
+.site-footer-nav a:focus-visible {
+  color: var(--text);
 }
 
 .user-chip {
@@ -439,15 +463,63 @@ small,
   line-height: 1.6;
 }
 
+.hero-search-copy p {
+  margin: 18px 0 0;
+  max-width: 60ch;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
 .info-card h2 {
   margin: 0;
   font-size: 1.05rem;
 }
 
+.info-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.info-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
 .dashboard-page,
-.settings-page {
+.settings-page,
+.content-page {
   display: grid;
   gap: 20px;
+}
+
+.content-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.content-hero h1,
+.content-card h2 {
+  margin: 0;
+}
+
+.home-section h2 {
+  margin-bottom: 6px;
+}
+
+.content-card {
+  gap: 14px;
+}
+
+.content-card p {
+  margin: 0;
+  max-width: 72ch;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.content-card code {
+  color: var(--text);
 }
 
 .dashboard-toolbar,
@@ -1742,6 +1814,28 @@ small,
   flex-wrap: wrap;
 }
 
+.site-footer {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  margin-top: 28px;
+  padding: 22px 0 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.site-footer-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.site-footer-copy p {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
 .is-hidden {
   display: none;
 }
@@ -1765,6 +1859,12 @@ small,
     align-items: flex-start;
   }
 
+  .topbar-nav,
+  .site-footer,
+  .site-footer-nav {
+    width: 100%;
+  }
+
   .topbar-actions {
     width: 100%;
     justify-content: space-between;
@@ -1781,7 +1881,8 @@ small,
   .countdown-layout,
   .overview-grid,
   .preview-meta,
-  .feature-toggle-surface {
+  .feature-toggle-surface,
+  .site-footer {
     grid-template-columns: 1fr;
   }
 
