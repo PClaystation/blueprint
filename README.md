@@ -15,7 +15,7 @@ The web layer now includes the baseline public-site files and routes expected fr
 
 - `/privacy`
 - `/terms`
-- `/contact`
+- Contact is centralized at `https://contact.continental-hub.com`
 - `/robots.txt`
 - `/sitemap.xml`
 - `/security.txt`
@@ -113,20 +113,44 @@ AUTH_API_BASE_URL=
 AUTH_LOGIN_POPUP_URL=
 ```
 
+For production, also set:
+
+```text
+NODE_ENV=production
+BASE_URL=https://your-blueprint-domain.example
+DATA_DIR=/var/lib/blueprint
+```
+
+`DISCORD_SESSION_SECRET` should be a unique random value of at least 32 characters. When
+`NODE_ENV=production`, startup fails if required URLs are invalid, `BASE_URL` is not HTTPS,
+or the session secret is too short.
+
 ## Optional Environment Variables
 
 ```text
 BASE_URL=http://localhost:3000
+DATA_DIR=./data
 PORT=3000
 DISCORD_GUILD_ID=
 AUTH_TRUSTED_LOGIN_ORIGINS=
+SESSION_COOKIE_NAME=blueprint.sid
 ```
 
 ## Storage
 
-- Guild configuration is stored in `data/control-center.db`.
-- Session handling uses `express-session`.
-- The current default session store is acceptable for local development, but should be replaced for real production deployment.
+- Guild configuration is stored in `${DATA_DIR}/control-center.db`.
+- Auth sessions are stored in `${DATA_DIR}/sessions.db` using the same SQLite runtime.
+- Runtime database files are ignored by Git and should be backed up by the deployment environment.
+
+## Production Checks
+
+The app exposes:
+
+- `/healthz` for a lightweight process health check
+- `/readyz` for bot and storage readiness
+
+Privileged dashboard POST routes use same-origin checks and CSRF tokens. Run the app behind
+HTTPS in production so secure cookies and HSTS are active.
 
 ## Testing
 

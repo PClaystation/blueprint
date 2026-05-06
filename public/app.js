@@ -128,11 +128,16 @@
     return popupUrl.toString();
   }
 
+  function getCsrfHeaders() {
+    return config.csrfToken ? { "X-CSRF-Token": config.csrfToken } : {};
+  }
+
   async function syncLocalSession(accessToken) {
     const response = await fetch("/auth/session", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...getCsrfHeaders(),
       },
       body: JSON.stringify({ accessToken }),
     });
@@ -199,6 +204,7 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getCsrfHeaders(),
         },
         body: JSON.stringify({ returnTo }),
       });

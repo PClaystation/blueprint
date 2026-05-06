@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const Database = require("better-sqlite3");
+const config = require("./config");
 const {
   DEFAULT_DAILY_ALERT_TIME,
   DEFAULT_DAILY_ALERT_TIME_ZONE,
@@ -29,10 +30,12 @@ const { defaults: automationDefaults } = require("./modules/automations");
 const { defaults: modmailDefaults } = require("./modules/modmail");
 const { defaults: applicationDefaults } = require("./modules/applications");
 
-const dataDir = path.join(process.cwd(), "data");
+const dataDir = config.dataDir;
 fs.mkdirSync(dataDir, { recursive: true });
 
 const db = new Database(path.join(dataDir, "control-center.db"));
+db.pragma("journal_mode = WAL");
+db.pragma("busy_timeout = 5000");
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS guild_settings (
@@ -709,6 +712,7 @@ function clearCountdownAlertLastSentOn(guildId) {
 }
 
 module.exports = {
+  checkStorageHealth,
   clearCountdownAlertLastSentOn,
   deleteStarboardEntry,
   defaults,
@@ -720,6 +724,11 @@ module.exports = {
   setCountdownAlertLastSentOn,
   upsertStarboardEntry,
 };
+
+function checkStorageHealth() {
+  db.prepare("SELECT 1").get();
+  return true;
+}
 
 function getCountdownAlertLastSentOn(guildId) {
   const row = db

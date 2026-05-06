@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const path = require("node:path");
 
 const express = require("express");
@@ -16,9 +17,9 @@ const {
 } = require("discord.js");
 
 const config = require("./config");
+const { createSessionStore } = require("./session-store");
 const {
   renderAuthComplete,
-  renderContactPage,
   renderDashboard,
   renderGuildSettings,
   renderHome,
@@ -124,6 +125,7 @@ const {
 } = require("./modules/applications");
 const {
   clearCountdownAlertLastSentOn,
+  checkStorageHealth,
   deleteStarboardEntry,
   getCountdownAlertLastSentOn,
   getNextSuggestionNumber,
@@ -134,12 +136,23 @@ const {
   upsertStarboardEntry,
 } = require("./storage");
 
-if (!config.token || !config.clientId || !config.sessionSecret) {
-  console.error(
-    "Missing required environment variables. Set DISCORD_TOKEN, DISCORD_CLIENT_ID, and DISCORD_SESSION_SECRET.",
-  );
+const runtimeConfigValidation = config.validateRuntimeConfig();
+for (const warning of runtimeConfigValidation.warnings) {
+  console.warn(`Config warning: ${warning}`);
+}
+if (runtimeConfigValidation.errors.length > 0) {
+  console.error("Invalid runtime configuration:");
+  for (const error of runtimeConfigValidation.errors) {
+    console.error(`- ${error}`);
+  }
   process.exit(1);
 }
+
+const SESSION_COOKIE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+const sessionStore = createSessionStore({
+  dataDir: config.dataDir,
+  ttlMs: SESSION_COOKIE_MAX_AGE_MS,
+});
 
 const commands = [
   new SlashCommandBuilder()
@@ -210,12 +223,14 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(
   session({
+    name: config.sessionCookieName,
+    store: sessionStore,
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      maxAge: 1000 * 60 * 60 * 24 * 7,
+      maxAge: SESSION_COOKIE_MAX_AGE_MS,
       sameSite: "lax",
       secure: config.baseUrl.startsWith("https://"),
     },
@@ -223,6 +238,8 @@ app.use(
 );
 app.use(express.static(path.join(process.cwd(), "public")));
 app.use("/images", express.static(path.join(process.cwd(), "images")));
+app.use(ensureCsrfToken);
+app.use(requireTrustedOrigin);
 app.get("/favicon.ico", (request, response) => {
   response.sendFile(path.join(process.cwd(), "images", "blueprint-pfp2.png"));
 });
@@ -252,7 +269,7 @@ app.use((request, response, next) => {
 app.get("/", (request, response) => {
   response.send(
     renderHome({
-      authConfig: getAuthClientConfig(),
+      authConfig: getAuthClientConfig(request),
       sessionUser: response.locals.sessionUser,
     }),
   );
@@ -261,7 +278,7 @@ app.get("/", (request, response) => {
 app.get("/privacy", (request, response) => {
   response.send(
     renderPrivacyPage({
-      authConfig: getAuthClientConfig(),
+      authConfig: getAuthClientConfig(request),
       sessionUser: response.locals.sessionUser,
     }),
   );
@@ -270,19 +287,31 @@ app.get("/privacy", (request, response) => {
 app.get("/terms", (request, response) => {
   response.send(
     renderTermsPage({
-      authConfig: getAuthClientConfig(),
+      authConfig: getAuthClientConfig(request),
       sessionUser: response.locals.sessionUser,
     }),
   );
 });
 
-app.get("/contact", (request, response) => {
-  response.send(
-    renderContactPage({
-      authConfig: getAuthClientConfig(),
-      sessionUser: response.locals.sessionUser,
-    }),
-  );
+app.get("/healthz", (request, response) => {
+  response.json({ ok: true });
+});
+
+app.get("/readyz", (request, response) => {
+  try {
+    checkStorageHealth();
+    response.status(client.isReady() ? 200 : 503).json({
+      botReady: client.isReady(),
+      ok: client.isReady(),
+      storageReady: true,
+    });
+  } catch (error) {
+    response.status(503).json({
+      botReady: client.isReady(),
+      ok: false,
+      storageReady: false,
+    });
+  }
 });
 
 app.get("/robots.txt", (request, response) => {
@@ -303,7 +332,6 @@ app.get("/sitemap.xml", (request, response) => {
     { path: "/", priority: "1.0", changefreq: "weekly", lastmod: lastModified },
     { path: "/privacy", priority: "0.4", changefreq: "yearly", lastmod: lastModified },
     { path: "/terms", priority: "0.4", changefreq: "yearly", lastmod: lastModified },
-    { path: "/contact", priority: "0.3", changefreq: "yearly", lastmod: lastModified },
   ];
   const body = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -323,7 +351,7 @@ ${pages
 
 app.get(["/security.txt", "/.well-known/security.txt"], (request, response) => {
   response.type("text/plain").send([
-    `Contact: ${config.baseUrl}/contact`,
+    "Contact: https://contact.continental-hub.com",
     `Expires: ${getSecurityTextExpiryDate()}`,
     "Preferred-Languages: en",
     `Canonical: ${config.baseUrl}/.well-known/security.txt`,
@@ -347,14 +375,14 @@ app.get("/data.json", (request, response) => {
 app.get("/auth/complete", (request, response) => {
   response.send(
     renderAuthComplete({
-      authConfig: getAuthClientConfig(),
+      authConfig: getAuthClientConfig(request),
       returnTo: normalizeReturnTo(request.query.returnTo),
       sessionUser: response.locals.sessionUser,
     }),
   );
 });
 
-app.post("/auth/session", async (request, response, next) => {
+app.post("/auth/session", requireCsrfToken, async (request, response, next) => {
   try {
     const accessToken = normalizeToken(request.body.accessToken);
     if (!accessToken) {
@@ -378,7 +406,7 @@ app.post("/auth/session", async (request, response, next) => {
   }
 });
 
-app.post("/auth/link/discord/start", requireAuthJson, async (request, response, next) => {
+app.post("/auth/link/discord/start", requireAuthJson, requireCsrfToken, async (request, response, next) => {
   try {
     const payload = await fetchAuthJson("/api/auth/oauth/discord/link-start", {
       accessToken: request.session.accessToken,
@@ -419,7 +447,7 @@ app.get("/dashboard", requireAuthPage, async (request, response, next) => {
     response.send(
       renderDashboard({
         addBotUrl,
-        authConfig: getAuthClientConfig(),
+        authConfig: getAuthClientConfig(request),
         discordLinked: Boolean(request.session.user.discordLinked),
         guilds,
         sessionUser: response.locals.sessionUser,
@@ -455,7 +483,7 @@ app.get("/dashboard/:guildId", requireAuthPage, async (request, response, next) 
 
     response.send(
       renderGuildSettings({
-        authConfig: getAuthClientConfig(),
+        authConfig: getAuthClientConfig(request),
         channelOptions: dashboardOptions.channelOptions,
         guild,
         mentionRoleOptions: dashboardOptions.mentionRoleOptions,
@@ -471,7 +499,7 @@ app.get("/dashboard/:guildId", requireAuthPage, async (request, response, next) 
   }
 });
 
-app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next) => {
+app.post("/dashboard/:guildId", requireAuthPage, requireCsrfToken, async (request, response, next) => {
   try {
     const guild = await getManagedGuild(
       request.session.user.discordUserId,
@@ -556,7 +584,7 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
     if (validationErrors.length > 0) {
       response.status(400).send(
         renderGuildSettings({
-          authConfig: getAuthClientConfig(),
+          authConfig: getAuthClientConfig(request),
           channelOptions: dashboardOptions.channelOptions,
           errorMessage: validationErrors[0],
           guild,
@@ -583,7 +611,7 @@ app.post("/dashboard/:guildId", requireAuthPage, async (request, response, next)
   }
 });
 
-app.post("/dashboard/:guildId/countdown/remove", requireAuthPage, async (request, response, next) => {
+app.post("/dashboard/:guildId/countdown/remove", requireAuthPage, requireCsrfToken, async (request, response, next) => {
   try {
     const guild = await getManagedGuild(
       request.session.user.discordUserId,
@@ -611,7 +639,7 @@ app.post("/dashboard/:guildId/countdown/remove", requireAuthPage, async (request
 app.use((request, response) => {
   response.status(404).send(
     renderNotFoundPage({
-      authConfig: getAuthClientConfig(),
+      authConfig: getAuthClientConfig(request),
       sessionUser: response.locals.sessionUser,
     }),
   );
@@ -1087,6 +1115,92 @@ function requireAuthPage(request, response, next) {
   next();
 }
 
+function ensureCsrfToken(request, response, next) {
+  if (!request.session.csrfToken && shouldIssueCsrfToken(request)) {
+    request.session.csrfToken = crypto.randomBytes(32).toString("hex");
+  }
+
+  next();
+}
+
+function shouldIssueCsrfToken(request) {
+  if (request.method !== "GET") {
+    return false;
+  }
+
+  if (
+    request.path === "/robots.txt" ||
+    request.path === "/sitemap.xml" ||
+    request.path === "/security.txt" ||
+    request.path === "/.well-known/security.txt" ||
+    request.path === "/site.webmanifest" ||
+    request.path === "/manifest.json" ||
+    request.path === "/data.json" ||
+    request.path === "/healthz" ||
+    request.path === "/readyz" ||
+    request.path.startsWith("/favicon")
+  ) {
+    return false;
+  }
+
+  return Boolean(request.accepts("html"));
+}
+
+function requireCsrfToken(request, response, next) {
+  const submittedToken = normalizeText(
+    request.get("x-csrf-token") || request.body?._csrf,
+    "",
+    256,
+  );
+
+  if (!tokensMatch(request.session.csrfToken, submittedToken)) {
+    if (request.accepts("html")) {
+      response.status(403).send("Invalid request token.");
+      return;
+    }
+
+    response.status(403).json({ message: "Invalid request token." });
+    return;
+  }
+
+  next();
+}
+
+function requireTrustedOrigin(request, response, next) {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
+    next();
+    return;
+  }
+
+  const origin = request.get("origin") || safeOriginFromUrl(request.get("referer"));
+  if (!origin && !config.isProduction) {
+    next();
+    return;
+  }
+
+  if (origin === safeOriginFromUrl(config.baseUrl)) {
+    next();
+    return;
+  }
+
+  if (request.accepts("html")) {
+    response.status(403).send("Untrusted request origin.");
+    return;
+  }
+
+  response.status(403).json({ message: "Untrusted request origin." });
+}
+
+function tokensMatch(expectedToken, submittedToken) {
+  if (!expectedToken || !submittedToken) {
+    return false;
+  }
+
+  const expected = Buffer.from(expectedToken);
+  const submitted = Buffer.from(submittedToken);
+  return expected.length === submitted.length && crypto.timingSafeEqual(expected, submitted);
+}
+
 function applySecurityHeaders(response) {
   response.set({
     "Content-Security-Policy": [
@@ -1161,7 +1275,7 @@ function buildSiteData() {
     description:
       "Blueprint is a modular, dashboard-first Discord bot control center for moderation, automations, welcome flows, tickets, and server operations.",
     endpoints: {
-      contact: "/contact",
+      contact: "https://contact.continental-hub.com",
       privacy: "/privacy",
       robots: "/robots.txt",
       security: "/.well-known/security.txt",
@@ -1236,7 +1350,7 @@ function buildSessionUser(user) {
   };
 }
 
-function getAuthClientConfig() {
+function getAuthClientConfig(request) {
   const loginPopupOrigin = safeOriginFromUrl(config.authLoginPopupUrl);
   const trustedLoginOrigins = Array.from(
     new Set([loginPopupOrigin, ...config.authTrustedLoginOrigins].filter(Boolean)),
@@ -1247,6 +1361,7 @@ function getAuthClientConfig() {
     authCompleteUrl: config.authCompleteUrl,
     authLoginPopupUrl: config.authLoginPopupUrl,
     baseUrl: config.baseUrl,
+    csrfToken: request.session.csrfToken,
     trustedLoginOrigins,
   };
 }
@@ -1542,9 +1657,11 @@ async function start() {
   await registerCommands();
   await client.login(config.token);
 
-  app.listen(config.port, () => {
+  const server = app.listen(config.port, () => {
     console.log(`Control center running at ${config.baseUrl}`);
   });
+
+  registerShutdownHandlers(server);
 }
 
 start().catch((error) => {
@@ -1552,3 +1669,31 @@ start().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
+function registerShutdownHandlers(server) {
+  let shuttingDown = false;
+
+  async function shutdown(signal) {
+    if (shuttingDown) {
+      return;
+    }
+
+    shuttingDown = true;
+    console.log(`Received ${signal}; shutting down.`);
+
+    await new Promise((resolve) => {
+      server.close(resolve);
+    });
+
+    client.destroy();
+    sessionStore.close();
+    process.exit(0);
+  }
+
+  process.on("SIGTERM", () => {
+    void shutdown("SIGTERM");
+  });
+  process.on("SIGINT", () => {
+    void shutdown("SIGINT");
+  });
+}

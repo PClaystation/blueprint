@@ -1829,6 +1829,23 @@ small,
   gap: 6px;
 }
 
+.site-footer-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.site-footer-mark img {
+  width: min(168px, 42vw);
+  height: auto;
+  opacity: 0.86;
+}
+
 .site-footer-copy p {
   margin: 0;
   max-width: 62ch;

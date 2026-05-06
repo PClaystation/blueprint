@@ -1,11 +1,12 @@
 {
   "name": "blueprint-discord-bot",
   "version": "1.0.0",
-  "description": "A very simple Discord slash command bot.",
+  "description": "A modular, dashboard-first Discord bot and control center.",
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
+    "start:prod": "NODE_ENV=production node src/index.js",
     "test": "node --test --test-force-exit test/*.test.js"
   },
   "engines": {

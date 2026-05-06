@@ -33,6 +33,8 @@ const { renderAutomationModuleCard } = require("./modules/automations");
 const { renderModmailModuleCard } = require("./modules/modmail");
 const { renderApplicationsModuleCard } = require("./modules/applications");
 
+const CONTACT_URL = "https://contact.continental-hub.com";
+
 function renderLayout({
   authConfig,
   body,
@@ -79,23 +81,28 @@ function renderLayout({
       <a href="/">Home</a>
       <a href="/privacy">Privacy</a>
       <a href="/terms">Terms</a>
-      <a href="/contact">Contact</a>
+      <a href="${CONTACT_URL}" target="_blank" rel="noopener noreferrer">Contact</a>
     </nav>
   `;
 
   const footer = `
     <footer class="site-footer">
       <div class="site-footer-copy">
-        <strong>Blueprint</strong>
+        <div class="site-footer-mark" aria-label="Made by Continental">
+          <span>Made by</span>
+          <img src="/images/made-by-continental-white.png" alt="Continental" />
+        </div>
         <p>
-          Modular Discord server control with a dashboard-first workflow, clearer setup paths,
-          and per-server configuration that stays easy to manage.
+          Blueprint keeps its dashboard-first Discord control workflow while staying connected
+          to the Continental toolset.
         </p>
       </div>
       <nav class="site-footer-nav" aria-label="Footer">
+        <a href="https://github.com/Charlemagne404" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://www.patreon.com/cw/ContinentalStudios" target="_blank" rel="noopener noreferrer">Patreon</a>
         <a href="/privacy">Privacy Policy</a>
         <a href="/terms">Terms of Service</a>
-        <a href="/contact">Contact</a>
+        <a href="${CONTACT_URL}" target="_blank" rel="noopener noreferrer">Contact</a>
         <a href="/security.txt">Security</a>
       </nav>
     </footer>
@@ -690,6 +697,7 @@ function renderGuildSettings({
       </section>
 
       <form class="settings-stack" method="post" action="/dashboard/${guild.id}" data-settings-form>
+        <input type="hidden" name="_csrf" value="${escapeHtml(authConfig.csrfToken)}" />
         <section class="settings-card" data-settings-scope="core">
           <div class="card-header">
             <div>
@@ -1364,37 +1372,6 @@ function renderTermsPage({ authConfig, sessionUser }) {
   });
 }
 
-function renderContactPage({ authConfig, sessionUser }) {
-  return renderLegalPage({
-    authConfig,
-    currentPath: "/contact",
-    description:
-      "How to reach the team responsible for operating Blueprint and where to send security-related reports.",
-    sections: [
-      {
-        title: "General support",
-        paragraphs: [
-          "For access issues, configuration questions, or bug reports, contact the team or organization channel that provided your Blueprint access. Include the affected server name, the module involved, and the steps needed to reproduce the problem.",
-        ],
-      },
-      {
-        title: "Security reporting",
-        paragraphs: [
-          "If you discover a security issue, report it privately and include enough detail for reproduction, impact assessment, and validation. Use the published security contact file at <code>/security.txt</code> as the canonical reporting entry point for this deployment.",
-        ],
-      },
-      {
-        title: "Website endpoints",
-        paragraphs: [
-          "This deployment also publishes standard website essentials including <code>/robots.txt</code>, <code>/sitemap.xml</code>, and <code>/site.webmanifest</code> so the public site behaves like a complete production website rather than a bare dashboard shell.",
-        ],
-      },
-    ],
-    sessionUser,
-    title: "Contact",
-  });
-}
-
 function renderNotFoundPage({ authConfig, sessionUser }) {
   const body = `
     <main class="center-page" id="main-content">
@@ -1426,7 +1403,6 @@ function renderNotFoundPage({ authConfig, sessionUser }) {
 
 module.exports = {
   renderAuthComplete,
-  renderContactPage,
   renderDashboard,
   renderGuildSettings,
   renderHome,
