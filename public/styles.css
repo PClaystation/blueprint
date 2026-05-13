@@ -1815,10 +1815,11 @@ small,
 }
 
 .site-footer {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 18px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
+  align-items: flex-end;
+  justify-content: space-between;
   margin-top: 28px;
   padding: 22px 0 8px;
   border-top: 1px solid rgba(148, 163, 184, 0.14);
@@ -1827,6 +1828,8 @@ small,
 .site-footer-copy {
   display: grid;
   gap: 6px;
+  min-width: min(100%, 280px);
+  flex: 1 1 360px;
 }
 
 .site-footer-mark {
@@ -1841,7 +1844,7 @@ small,
 }
 
 .site-footer-mark img {
-  width: min(168px, 42vw);
+  width: min(150px, 48vw);
   height: auto;
   opacity: 0.86;
 }
@@ -1882,6 +1885,10 @@ small,
     width: 100%;
   }
 
+  .site-footer-nav {
+    justify-content: flex-start;
+  }
+
   .topbar-actions {
     width: 100%;
     justify-content: space-between;
@@ -1900,7 +1907,7 @@ small,
   .preview-meta,
   .feature-toggle-surface,
   .site-footer {
-    grid-template-columns: 1fr;
+    align-items: flex-start;
   }
 
   .save-bar,
